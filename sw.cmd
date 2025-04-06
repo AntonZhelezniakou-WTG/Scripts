@@ -165,8 +165,13 @@ if /I "%BRANCH%"=="master" (
     echo Merging local master into branch "%BRANCH%"...
     git merge master --no-edit
     if errorlevel 1 (
-        echo Merge conflicts detected. Launching TortoiseGit Resolve Tool...
-        "C:\Program Files\TortoiseGit\bin\TortoiseGitProc.exe" /command:resolve /path:"%cd%"
+        echo Merge conflicts detected. Gathering conflict files...
+        set "CONFLICT_FILES="
+        for /f "tokens=2 delims= " %%I in ('git status --porcelain ^| findstr /r "^UU"') do (
+            set "CONFLICT_FILES=!CONFLICT_FILES! %%I"
+        )
+        echo Launching TortoiseGit Resolve Tool...
+        "%TORTOISE_GIT%" /command:resolve /path:"%cd%"
 
         :WAIT_FOR_RESOLVE
         choice /c RA /m "Conflicts detected. Type R to retry conflict check, A to abort the merge."
@@ -176,34 +181,44 @@ if /I "%BRANCH%"=="master" (
             goto :error_exit
         )
 
-        git status --porcelain | findstr /r "UU" >nul 2>&1
+        git status --porcelain | findstr /r "^UU" >nul 2>&1
         if not errorlevel 1 (
             echo Conflicts still unresolved. Retry or abort.
             goto :WAIT_FOR_RESOLVE
         )
 
         echo All conflicts resolved. Continuing...
-    )
-
-    echo Merge complete. Checking for staged changes...
-    git diff --staged --exit-code >nul 2>&1
-    if "%ERRORLEVEL%"=="0" (
-        echo Nothing to commit, working tree clean.
-    ) else (
-        echo Changes detected. Committing merge...
-        git commit --no-edit
+        echo Creating auto-generated commit message...
+        set "COMMIT_MESSAGE=Merged master into %BRANCH%. Conflicts resolved in:%CONFLICT_FILES%"
+        echo Commit message:
+        echo %COMMIT_MESSAGE%
+        git add .
+        git commit -m "%COMMIT_MESSAGE%"
         if errorlevel 1 (
             echo Error: Commit operation failed.
             goto :error_exit
         )
         echo Merge complete.
+    ) else (
+        echo Merge complete. Checking for staged changes...
+        git diff --staged --exit-code >nul 2>&1
+        if "%ERRORLEVEL%"=="0" (
+            echo Nothing to commit, working tree clean.
+        ) else (
+            echo Changes detected. Committing merge...
+            git commit --no-edit
+            if errorlevel 1 (
+                echo Error: Commit operation failed.
+                goto :error_exit
+            )
+            echo Merge complete.
+        )
     )
 )
 
 :: ---------------------------------------------------------
 :: 9) Copy latest successful build to Dev\Bin (only if repo is CargoWise\Dev)
 :: ---------------------------------------------------------
-
 if /I "%cd%"=="%GIT_BASE%\CargoWise\Dev" (
     echo Copying latest successful build to Dev\Bin...
 
@@ -219,6 +234,7 @@ if /I "%cd%"=="%GIT_BASE%\CargoWise\Dev" (
         goto :error_exit
     )
 )
+
 goto :success
 
 :success
