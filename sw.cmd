@@ -37,22 +37,7 @@ if "%PARAM1%"=="" (
 )
 
 :: ---------------------------------------------------------
-:: 3) Try to treat PARAM1 as a folder directly.
-:: ---------------------------------------------------------
-cd /d "%PARAM1%" >nul 2>&1
-if not errorlevel 1 (
-    echo Switching to folder: %PARAM1%
-    if not "%PARAM2%"=="" (
-       set "BRANCH=%PARAM2%"
-       goto :MAIN
-    ) else (
-       endlocal & cd /d "%PARAM1%"
-       exit /b 0
-    )
-)
-
-:: ---------------------------------------------------------
-:: 4) If PARAM1 is not a valid folder, try matching it as an alias.
+:: 3) Try to match PARAM1 as an alias FIRST
 :: ---------------------------------------------------------
 set "foundAlias="
 for %%A in ("%aliases:;=" "%") do (
@@ -65,7 +50,7 @@ for %%A in ("%aliases:;=" "%") do (
                 set "ALIASFOLDER=%%C"
                 if not "%PARAM2%"=="" (
                     set "BRANCH=%PARAM2%"
-                    goto :AFTER_ALIAS_LOOP
+                    goto :MAIN
                 ) else (
                     endlocal & cd /d "%%C"
                     exit /b 0
@@ -75,9 +60,24 @@ for %%A in ("%aliases:;=" "%") do (
     )
 )
 
-:AFTER_ALIAS_LOOP
+:: ---------------------------------------------------------
+:: 4) If PARAM1 is not a valid alias, try it as a folder path
+:: ---------------------------------------------------------
 if not defined foundAlias (
-    set "BRANCH=%PARAM1%"
+    cd /d "%PARAM1%" >nul 2>&1
+    if not errorlevel 1 (
+        echo Switching to folder: %PARAM1%
+        if not "%PARAM2%"=="" (
+           set "BRANCH=%PARAM2%"
+           goto :MAIN
+        ) else (
+           endlocal & cd /d "%PARAM1%"
+           exit /b 0
+        )
+    ) else (
+        :: If neither alias nor valid path, assume it's a branch name
+        set "BRANCH=%PARAM1%"
+    )
 )
 
 :: ---------------------------------------------------------
