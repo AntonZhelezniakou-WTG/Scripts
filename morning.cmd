@@ -23,6 +23,23 @@ set "repos[5]=c:\git\wtg\RefDataRepo\Shared"
 set "total=6"
 set "counter=0"
 
+:: ---------------------------------------------------------
+:: Check if Visual Studio is running and prompt to close it
+:: ---------------------------------------------------------
+:check_visual_studio
+tasklist /FI "IMAGENAME eq devenv.exe" 2>NUL | find /I /N "devenv.exe" >NUL
+if not errorlevel 1 (
+    echo Visual Studio (devenv.exe) is currently running.
+    echo Please close Visual Studio before proceeding with the QGL build.
+    choice /C YN /M "Have you closed Visual Studio?"
+    if errorlevel 2 (
+        echo Operation aborted.
+        endlocal
+        exit /b 1
+    )
+    goto :check_visual_studio
+)
+
 :: ------------------------------------------------------------------
 :: Delete backup folders older than 7 days in C:\Backups\DevBuilds
 :: If all folders are older than 7 days, preserve the newest one.
