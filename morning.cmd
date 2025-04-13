@@ -149,7 +149,8 @@ echo All repositories updated. Running QGL build...
 echo ========================================
 echo.
 
-"c:\Cmd\qgl\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
+::"c:\Cmd\qgl\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
+"c:\WTG\QGL\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
 
 if errorlevel 1 (
     echo Build error occurred. Opening latest log file...

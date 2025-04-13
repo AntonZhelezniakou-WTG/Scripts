@@ -5,6 +5,8 @@ setlocal enabledelayedexpansion
 :: Global Paths (Define all paths here)
 :: ---------------------------------------------------------
 set "GIT_BASE=C:\git\wtg"
+set "GITHUB_WTG_BASE=C:\git\GitHub\WiseTechGlobal"
+set "GITHUB_WTG_PERSONAL=%GITHUB_WTG_BASE%\Personal"
 set "BACKUP_BASE=C:\Backups\DevBuilds"
 set "DEV_BIN=%GIT_BASE%\CargoWise\Dev\Bin"
 set "TORTOISE_GIT=C:\Program Files\TortoiseGit\bin\TortoiseGitProc.exe"
@@ -17,8 +19,9 @@ set "aliases="
 set "aliases=!aliases!dev=%GIT_BASE%\CargoWise\Dev;"
 set "aliases=!aliases!customs=%GIT_BASE%\CargoWise\Customs;"
 set "aliases=!aliases!refdata=%GIT_BASE%\RefDataRepo\RefDataRepo;"
-set "aliases=!aliases!shared=c:\git\GitHub\WiseTechGlobal\CargoWise.Shared;"
-set "aliases=!aliases!devtools=C:\git\GitHub\WiseTechGlobal\DevTools;"
+set "aliases=!aliases!shared=%GITHUB_WTG_BASE%\CargoWise.Shared;"
+set "aliases=!aliases!devtools=%GITHUB_WTG_BASE%\DevTools;"
+set "aliases=!aliases!scripts=%GITHUB_WTG_PERSONAL%\Scripts;"
 set "aliases=!aliases!shared.old=%GIT_BASE%\CargoWise\Shared;"
 set "aliases=!aliases!shared.refdata=%GIT_BASE%\RefDataRepo\Shared"
 
