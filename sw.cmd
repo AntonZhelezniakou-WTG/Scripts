@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: ---------------------------------------------------------
-:: Global Paths (Define all paths here)
+:: 1) Global Paths (Define all paths here)
 :: ---------------------------------------------------------
 set "GIT_BASE=C:\git\wtg"
 set "GITHUB_WTG_BASE=C:\git\GitHub\WiseTechGlobal"
@@ -26,7 +26,24 @@ set "aliases=!aliases!shared.old=%GIT_BASE%\CargoWise\Shared;"
 set "aliases=!aliases!shared.refdata=%GIT_BASE%\RefDataRepo\Shared"
 
 :: ---------------------------------------------------------
-:: 2) Capture command-line parameters.
+:: 2) Check if Visual Studio is running and prompt to close it
+:: ---------------------------------------------------------
+:check_visual_studio
+tasklist /FI "IMAGENAME eq devenv.exe" 2>NUL | find /I /N "devenv.exe" >NUL
+if not errorlevel 1 (
+    echo Visual Studio (devenv.exe) is currently running.
+    echo Please close Visual Studio before proceeding with the branch switch.
+    choice /C YN /M "Have you closed Visual Studio?"
+    if errorlevel 2 (
+        echo Operation aborted.
+        endlocal
+        exit /b 1
+    )
+    goto :check_visual_studio
+)
+
+:: ---------------------------------------------------------
+:: 3) Capture command-line parameters.
 :: ---------------------------------------------------------
 set "PARAM1=%~1"
 set "PARAM2=%~2"
@@ -37,7 +54,7 @@ if "%PARAM1%"=="" (
 )
 
 :: ---------------------------------------------------------
-:: 3) Try to match PARAM1 as an alias FIRST
+:: 4) Try to match PARAM1 as an alias FIRST
 :: ---------------------------------------------------------
 set "foundAlias="
 for %%A in ("%aliases:;=" "%") do (
@@ -61,7 +78,7 @@ for %%A in ("%aliases:;=" "%") do (
 )
 
 :: ---------------------------------------------------------
-:: 4) If PARAM1 is not a valid alias, try it as a folder path
+:: 5) If PARAM1 is not a valid alias, try it as a folder path
 :: ---------------------------------------------------------
 if not defined foundAlias (
     cd /d "%PARAM1%" >nul 2>&1
@@ -81,7 +98,7 @@ if not defined foundAlias (
 )
 
 :: ---------------------------------------------------------
-:: 5) MAIN: Process branch switching and merging.
+:: 6) MAIN: Process branch switching and merging.
 :: ---------------------------------------------------------
 :MAIN
 if "%BRANCH%"=="" (
@@ -115,7 +132,7 @@ if defined HAS_CHANGES (
 )
 
 :: ---------------------------------------------------------
-:: 6) Switch to the specified branch.
+:: 7) Switch to the specified branch.
 ::    If the branch does not exist locally, try to create it from remote.
 :: ---------------------------------------------------------
 git rev-parse --verify "%BRANCH%" >nul 2>&1
@@ -141,7 +158,7 @@ if errorlevel 1 (
 )
 
 :: ---------------------------------------------------------
-:: 7) Pull updates for the current branch
+:: 8) Pull updates for the current branch
 :: ---------------------------------------------------------
 if /I "%BRANCH%"=="master" (
     rem No pull for master branch.
@@ -159,7 +176,7 @@ if /I "%BRANCH%"=="master" (
 )
 
 :: ---------------------------------------------------------
-:: 8) Merge local master into the current branch, except for master.
+:: 9) Merge local master into the current branch, except for master.
 :: ---------------------------------------------------------
 :merge_master
 if /I "%BRANCH%"=="master" (
@@ -220,7 +237,7 @@ if /I "%BRANCH%"=="master" (
 )
 
 :: ---------------------------------------------------------
-:: 9) Copy latest successful build to Dev\Bin (only if repo is CargoWise\Dev)
+:: 10) Copy latest successful build to Dev\Bin (only if repo is CargoWise\Dev)
 :: ---------------------------------------------------------
 if /I "%cd%"=="%GIT_BASE%\CargoWise\Dev" (
     echo Copying latest successful build to Dev\Bin...
