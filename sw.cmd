@@ -146,15 +146,31 @@ if errorlevel 1 (
 if /I "%BRANCH%"=="master" (
     rem No pull for master branch.
 ) else (
-    for /f "delims=" %%r in ('git rev-parse --abbrev-ref --symbolic-full-name @{u}') do (
-       set "REMOTE_FULL=%%r"
+    :: Get upstream branch reference
+    for /f "delims=" %%r in ('git rev-parse --abbrev-ref --symbolic-full-name @{u} 2^>nul') do (
+        set "REMOTE_FULL=%%r"
     )
-    for /f "tokens=1,* delims=/" %%a in ("%REMOTE_FULL%") do (
-       set "REMOTE_BRANCH=%%b"
-    )
-    git pull --rebase=true origin !REMOTE_BRANCH! --prune
-    if errorlevel 1 (
-       echo Could not pull from origin!
+    
+    :: Only proceed if we have a valid upstream branch
+    if defined REMOTE_FULL (
+        :: Parse remote and branch name from the full reference
+        for /f "tokens=1,* delims=/" %%a in ("!REMOTE_FULL!") do (
+            set "REMOTE_NAME=%%a"
+            set "REMOTE_BRANCH=%%b"
+        )
+        
+        :: Only proceed if we successfully parsed the remote branch
+        if defined REMOTE_BRANCH (
+            echo Pulling from origin/!REMOTE_BRANCH!...
+            git pull --rebase=true origin !REMOTE_BRANCH! --prune
+            if errorlevel 1 (
+                echo Could not pull from origin!
+            )
+        ) else (
+            echo Unable to determine remote branch name. Skipping pull.
+        )
+    ) else (
+        echo No upstream branch configured. Skipping pull.
     )
 )
 
@@ -202,10 +218,10 @@ if /I "%BRANCH%"=="master" (
             goto :error_exit
         )
         echo Merge complete.
-    } else {
+    ) else (
         echo Merge complete. Checking for staged changes...
         git diff --staged --exit-code >nul 2>&1
-        if "%ERRORLEVEL%"=="0" (
+        if not errorlevel 1 (
             echo Nothing to commit, working tree clean.
         ) else (
             echo Changes detected. Creating commit message...
@@ -218,7 +234,7 @@ if /I "%BRANCH%"=="master" (
             )
             echo Merge complete.
         )
-    }
+    )
 )
 
 :: ---------------------------------------------------------

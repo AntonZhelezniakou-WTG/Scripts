@@ -27,6 +27,8 @@ set "NOTEPAD_PATH=C:\Program Files\Notepad++\notepad++.exe"
 set "UPGRADE_DBS_PATH=C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
 set "TEMP_PATH=%TEMP%"
 set "QGL_LOGS_PATH=%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs"
+set "VS_CHECK_FILE=%TEMP_PATH%\vs_check.txt"
+set "GIT_BACKUP_DIR_PREFIX=%TEMP_PATH%\git_backup_"
 
 :: Define repository paths
 set "repos[0]=%DEV_REPO_PATH%"
@@ -42,8 +44,8 @@ set "counter=0"
 :: Check if Visual Studio is running - using simplest possible approach
 :: ---------------------------------------------------------
 :check_visual_studio
-tasklist > %TEMP_PATH%\vs_check.txt
-type %TEMP_PATH%\vs_check.txt | find "devenv"
+tasklist > "%VS_CHECK_FILE%"
+type "%VS_CHECK_FILE%" | find "devenv"
 if errorlevel 1 goto vs_not_running
     echo Visual Studio is running.
     echo Please close Visual Studio before proceeding.
@@ -56,28 +58,27 @@ if errorlevel 1 goto vs_not_running
     )
     goto check_visual_studio
 :vs_not_running
-del %TEMP_PATH%\vs_check.txt
+del "%VS_CHECK_FILE%"
 
 :: ------------------------------------------------------------------
 :: Delete backup folders older than 7 days in C:\Backups\DevBuilds
 :: If all folders are older than 7 days, preserve the newest one.
 :: ------------------------------------------------------------------
-set "buildsBackupDir=C:\Backups\DevBuilds"
 set "totalFolders=0"
-for /D %%F in ("%buildsBackupDir%\*") do (
+for /D %%F in ("%BUILDS_BACKUP_DIR%\*") do (
     set /a totalFolders+=1
 )
 
 :: Count subdirectories older than 7 days using forfiles.
 set "oldCount=0"
-for /F "tokens=*" %%F in ('forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
+for /F "tokens=*" %%F in ('forfiles /P "%BUILDS_BACKUP_DIR%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
     set /a oldCount+=1
 )
 
 :: If at least one folder exists and all are older than 7 days,
 :: then determine the newest folder (to be preserved) by capturing the first result.
 if %totalFolders% GTR 0 if %oldCount% EQU %totalFolders% (
-    for /F "tokens=*" %%G in ('dir /AD /B /O-D "%buildsBackupDir%"') do (
+    for /F "tokens=*" %%G in ('dir /AD /B /O-D "%BUILDS_BACKUP_DIR%"') do (
         if not defined newestFolder (
             set "newestFolder=%%G"
         )
@@ -85,7 +86,7 @@ if %totalFolders% GTR 0 if %oldCount% EQU %totalFolders% (
 )
 
 :: Delete backup folders older than 7 days, skipping the newest folder if defined.
-for /F "tokens=*" %%F in ('forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
+for /F "tokens=*" %%F in ('forfiles /P "%BUILDS_BACKUP_DIR%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
     for %%P in (%%F) do set "folderName=%%~nxP"
     if defined newestFolder (
         if /I "!folderName!"=="!newestFolder!" (
@@ -103,15 +104,15 @@ for /F "tokens=*" %%F in ('forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @
 :: ------------------------------------------------------------------
 :: Save current commit hash of the Dev repository (for potential rollback)
 :: ------------------------------------------------------------------
-if exist "C:\git\wtg\CargoWise\Dev" (
-    pushd "C:\git\wtg\CargoWise\Dev"
+if exist "%DEV_REPO_PATH%" (
+    pushd "%DEV_REPO_PATH%"
     for /F "tokens=*" %%C in ('git rev-parse HEAD') do (
         set "devPrePull=%%C"
     )
     popd
     echo Saved current commit for CargoWise Dev: !devPrePull!
 ) else (
-    echo ERROR: Repository C:\git\wtg\CargoWise\Dev does not exist.
+    echo ERROR: Repository %DEV_REPO_PATH% does not exist.
 )
 
 :: ------------------------------------------------------------------
@@ -156,7 +157,7 @@ if not errorlevel 1 (
         echo Operation aborted for "!repo!".
         goto :LOOP
     )
-    set "gitBackupDir=%TEMP%\git_backup_%RANDOM%"
+    set "gitBackupDir=%GIT_BACKUP_DIR_PREFIX%%RANDOM%"
     mkdir "!gitBackupDir!"
     echo Backing up local changes to "!gitBackupDir!"
     git diff > "!gitBackupDir!\changes.patch"
@@ -184,40 +185,40 @@ echo All repositories updated. Running QGL build...
 echo ========================================
 echo.
 
-"c:\WTG\QGL\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
+"%QGL_EXE_PATH%" build -m FULL --error-mode ShowError -v -i -r -p "%DEV_REPO_PATH%"
 
 if errorlevel 1 (
     echo Build error occurred. Opening latest log file...
     set "LATEST_LOG="
-    for /F "tokens=*" %%i in ('dir /B /O-D "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\*.log"') do (
+    for /F "tokens=*" %%i in ('dir /B /O-D "%QGL_LOGS_PATH%\*.log"') do (
         if not defined LATEST_LOG set "LATEST_LOG=%%i"
     )
     if defined LATEST_LOG (
-        start "" "C:\Program Files\Notepad++\notepad++.exe" "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\%LATEST_LOG%"
+        start "" "%NOTEPAD_PATH%" "%QGL_LOGS_PATH%\%LATEST_LOG%"
     ) else (
         echo No log file found.
     )
     :: On build failure: revert Dev repository and restore latest backup.
     if defined devPrePull (
-        echo Reverting C:\git\wtg\CargoWise\Dev to commit !devPrePull!...
-        pushd "C:\git\wtg\CargoWise\Dev"
+        echo Reverting %DEV_REPO_PATH% to commit !devPrePull!...
+        pushd "%DEV_REPO_PATH%"
         git reset --hard !devPrePull!
         popd
     ) else (
         echo No previous commit recorded.
     )
-    echo Clearing C:\git\wtg\CargoWise\Dev\Bin...
-    rd /s /q "C:\git\wtg\CargoWise\Dev\Bin"
-    mkdir "C:\git\wtg\CargoWise\Dev\Bin"
+    echo Clearing %DEV_BIN_PATH%...
+    rd /s /q "%DEV_BIN_PATH%"
+    mkdir "%DEV_BIN_PATH%"
     set "latestBackup="
-    for /F "tokens=*" %%F in ('dir /AD /B /O-D "C:\Backups\DevBuilds"') do (
+    for /F "tokens=*" %%F in ('dir /AD /B /O-D "%BUILDS_BACKUP_DIR%"') do (
         if not defined latestBackup (
             set "latestBackup=%%F"
         )
     )
     if defined latestBackup (
-        echo Restoring backup from "C:\Backups\DevBuilds\!latestBackup!"...
-        xcopy "C:\Backups\DevBuilds\!latestBackup!\*" "C:\git\wtg\CargoWise\Dev\Bin\" /S /E /H /Y
+        echo Restoring backup from "%BUILDS_BACKUP_DIR%\!latestBackup!"...
+        xcopy "%BUILDS_BACKUP_DIR%\!latestBackup!\*" "%DEV_BIN_PATH%\" /S /E /H /Y
     ) else (
         echo No backup folder found.
     )
@@ -228,13 +229,13 @@ if errorlevel 1 (
     :: On build success: create a new backup and launch the DB upgrade.
     for /F "tokens=2 delims==." %%I in ('wmic os get localdatetime /value') do set "ldt=%%I"
     set "timestamp=!ldt:~0,4!-!ldt:~4,2!-!ldt:~6,2!-!ldt:~8,2!-!ldt:~10,2!"
-    set "newBackupDir=C:\Backups\DevBuilds\!timestamp!"
+    set "newBackupDir=%BUILDS_BACKUP_DIR%\!timestamp!"
     mkdir "!newBackupDir!"
     echo Created backup directory: !newBackupDir!
-    echo Copying C:\git\wtg\CargoWise\Dev\Bin to !newBackupDir!...
-    xcopy "C:\git\wtg\CargoWise\Dev\Bin\*" "!newBackupDir!\" /S /E /H /Y >NUL
+    echo Copying %DEV_BIN_PATH% to !newBackupDir!...
+    xcopy "%DEV_BIN_PATH%\*" "!newBackupDir!\" /S /E /H /Y >NUL
     echo QGL build succeeded. Launching DB upgrade...
-    call "C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
+    call "%UPGRADE_DBS_PATH%"
 )
 
 echo.
