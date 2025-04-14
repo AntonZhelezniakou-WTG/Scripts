@@ -13,13 +13,28 @@ setlocal enabledelayedexpansion
 ::   - On build success, create a new backup and launch the DB upgrade.
 :: ------------------------------------------------------------------
 
+:: Define all paths at the start of the file
+set "DEV_REPO_PATH=C:\git\wtg\CargoWise\Dev"
+set "CUSTOMS_REPO_PATH=C:\git\wtg\CargoWise\Customs"
+set "SHARED_REPO_PATH=C:\git\wtg\CargoWise\Shared"
+set "GITHUB_SHARED_REPO_PATH=C:\git\GitHub\WiseTechGlobal\CargoWise.Shared"
+set "REFDATAREPO_PATH=c:\git\wtg\RefDataRepo\RefDataRepo"
+set "REFDATAREPO_SHARED_PATH=c:\git\wtg\RefDataRepo\Shared"
+set "BUILDS_BACKUP_DIR=C:\Backups\DevBuilds"
+set "DEV_BIN_PATH=C:\git\wtg\CargoWise\Dev\Bin"
+set "QGL_EXE_PATH=c:\WTG\QGL\qgl.exe"
+set "NOTEPAD_PATH=C:\Program Files\Notepad++\notepad++.exe"
+set "UPGRADE_DBS_PATH=C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
+set "TEMP_PATH=%TEMP%"
+set "QGL_LOGS_PATH=%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs"
+
 :: Define repository paths
-set "repos[0]=C:\git\wtg\CargoWise\Dev"
-set "repos[1]=C:\git\wtg\CargoWise\Customs"
-set "repos[2]=C:\git\wtg\CargoWise\Shared"
-set "repos[3]=C:\git\GitHub\WiseTechGlobal\CargoWise.Shared"
-set "repos[4]=c:\git\wtg\RefDataRepo\RefDataRepo"
-set "repos[5]=c:\git\wtg\RefDataRepo\Shared"
+set "repos[0]=%DEV_REPO_PATH%"
+set "repos[1]=%CUSTOMS_REPO_PATH%"
+set "repos[2]=%SHARED_REPO_PATH%"
+set "repos[3]=%GITHUB_SHARED_REPO_PATH%"
+set "repos[4]=%REFDATAREPO_PATH%"
+set "repos[5]=%REFDATAREPO_SHARED_PATH%"
 set "total=6"
 set "counter=0"
 
@@ -27,8 +42,8 @@ set "counter=0"
 :: Check if Visual Studio is running - using simplest possible approach
 :: ---------------------------------------------------------
 :check_visual_studio
-tasklist > %TEMP%\vs_check.txt
-type %TEMP%\vs_check.txt | find "devenv"
+tasklist > %TEMP_PATH%\vs_check.txt
+type %TEMP_PATH%\vs_check.txt | find "devenv"
 if errorlevel 1 goto vs_not_running
     echo Visual Studio is running.
     echo Please close Visual Studio before proceeding.
@@ -41,7 +56,7 @@ if errorlevel 1 goto vs_not_running
     )
     goto check_visual_studio
 :vs_not_running
-del %TEMP%\vs_check.txt
+del %TEMP_PATH%\vs_check.txt
 
 :: ------------------------------------------------------------------
 :: Delete backup folders older than 7 days in C:\Backups\DevBuilds
