@@ -24,21 +24,24 @@ set "total=6"
 set "counter=0"
 
 :: ---------------------------------------------------------
-:: Check if Visual Studio is running and prompt to close it
+:: Check if Visual Studio is running - using simplest possible approach
 :: ---------------------------------------------------------
 :check_visual_studio
-tasklist /FI "IMAGENAME eq devenv.exe" 2>NUL | find /I /N "devenv.exe" >NUL
-if not errorlevel 1 (
-    echo Visual Studio (devenv.exe) is currently running.
-    echo Please close Visual Studio before proceeding with the QGL build.
-    choice /C YN /M "Have you closed Visual Studio?"
-    if errorlevel 2 (
+tasklist > %TEMP%\vs_check.txt
+type %TEMP%\vs_check.txt | find "devenv"
+if errorlevel 1 goto vs_not_running
+    echo Visual Studio is running.
+    echo Please close Visual Studio before proceeding.
+    echo Press Y to continue or N to abort.
+    set /p choice=Your choice (Y/N): 
+    if /i "%choice%"=="n" (
         echo Operation aborted.
         endlocal
         exit /b 1
     )
-    goto :check_visual_studio
-)
+    goto check_visual_studio
+:vs_not_running
+del %TEMP%\vs_check.txt
 
 :: ------------------------------------------------------------------
 :: Delete backup folders older than 7 days in C:\Backups\DevBuilds
@@ -51,16 +54,15 @@ for /D %%F in ("%buildsBackupDir%\*") do (
 )
 
 :: Count subdirectories older than 7 days using forfiles.
-:: The usebackq option with backticks ensures that inner quotes are processed correctly.
 set "oldCount=0"
-for /F "usebackq delims=" %%F in (`forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @relpath" 2^>nul`) do (
+for /F "tokens=*" %%F in ('forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
     set /a oldCount+=1
 )
 
 :: If at least one folder exists and all are older than 7 days,
 :: then determine the newest folder (to be preserved) by capturing the first result.
 if %totalFolders% GTR 0 if %oldCount% EQU %totalFolders% (
-    for /F "usebackq delims=" %%G in (`dir /AD /B /O-D "%buildsBackupDir%"`) do (
+    for /F "tokens=*" %%G in ('dir /AD /B /O-D "%buildsBackupDir%"') do (
         if not defined newestFolder (
             set "newestFolder=%%G"
         )
@@ -68,17 +70,18 @@ if %totalFolders% GTR 0 if %oldCount% EQU %totalFolders% (
 )
 
 :: Delete backup folders older than 7 days, skipping the newest folder if defined.
-for /F "usebackq delims=" %%F in (`forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @relpath" 2^>nul`) do (
+for /F "tokens=*" %%F in ('forfiles /P "%buildsBackupDir%" /D -7 /C "cmd /c if @isdir==TRUE echo @path" 2^>NUL') do (
+    for %%P in (%%F) do set "folderName=%%~nxP"
     if defined newestFolder (
-        if /I "%%F"=="!newestFolder!" (
-            echo Skipping newest backup folder: %%F
+        if /I "!folderName!"=="!newestFolder!" (
+            echo Skipping newest backup folder: !folderName!
         ) else (
-            echo Deleting folder: %%F
-            rd /s /q "%buildsBackupDir%\%%F"
+            echo Deleting folder: !folderName!
+            rd /s /q "%%F"
         )
     ) else (
-        echo Deleting folder: %%F
-        rd /s /q "%buildsBackupDir%\%%F"
+        echo Deleting folder: !folderName!
+        rd /s /q "%%F"
     )
 )
 
@@ -87,7 +90,7 @@ for /F "usebackq delims=" %%F in (`forfiles /P "%buildsBackupDir%" /D -7 /C "cmd
 :: ------------------------------------------------------------------
 if exist "C:\git\wtg\CargoWise\Dev" (
     pushd "C:\git\wtg\CargoWise\Dev"
-    for /F "delims=" %%C in ('git rev-parse HEAD') do (
+    for /F "tokens=*" %%C in ('git rev-parse HEAD') do (
         set "devPrePull=%%C"
     )
     popd
@@ -130,7 +133,7 @@ cd /d "!repo!" || (
 )
 
 :: Check for local changes
-git status --porcelain | findstr /R /C:"." >nul 2>&1
+git status --porcelain | findstr "." >NUL
 if not errorlevel 1 (
     echo Local changes detected in "!repo!"
     set /p choice="Discard changes? (y/N): " || set "choice=n"
@@ -143,8 +146,8 @@ if not errorlevel 1 (
     echo Backing up local changes to "!gitBackupDir!"
     git diff > "!gitBackupDir!\changes.patch"
     git ls-files --modified --others --exclude-standard > "!gitBackupDir!\changed_files.txt"
-    for /F "delims=" %%f in (!gitBackupDir!\changed_files.txt) do (
-        copy "%%f" "!gitBackupDir!\" >nul 2>&1
+    for /F "tokens=*" %%f in ('type "!gitBackupDir!\changed_files.txt"') do (
+        copy "%%f" "!gitBackupDir!\" >NUL 2>&1
     )
     git reset --hard
     git clean -df
@@ -166,17 +169,16 @@ echo All repositories updated. Running QGL build...
 echo ========================================
 echo.
 
-::"c:\Cmd\qgl\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
 "c:\WTG\QGL\qgl.exe" build -m FULL --error-mode ShowError -v -i -r -p "C:\git\wtg\CargoWise\Dev"
 
 if errorlevel 1 (
     echo Build error occurred. Opening latest log file...
     set "LATEST_LOG="
-    for /F "usebackq delims=" %%i in (`dir /B /O-D "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\*.log"`) do (
+    for /F "tokens=*" %%i in ('dir /B /O-D "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\*.log"') do (
         if not defined LATEST_LOG set "LATEST_LOG=%%i"
     )
     if defined LATEST_LOG (
-        "C:\Program Files\Notepad++\notepad++.exe" "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\%LATEST_LOG%"
+        start "" "C:\Program Files\Notepad++\notepad++.exe" "%LOCALAPPDATA%\WiseTech Global\QuickGetLatest\Logs\%LATEST_LOG%"
     ) else (
         echo No log file found.
     )
@@ -193,7 +195,7 @@ if errorlevel 1 (
     rd /s /q "C:\git\wtg\CargoWise\Dev\Bin"
     mkdir "C:\git\wtg\CargoWise\Dev\Bin"
     set "latestBackup="
-    for /F "usebackq delims=" %%F in (`dir /AD /B /O-D "C:\Backups\DevBuilds"`) do (
+    for /F "tokens=*" %%F in ('dir /AD /B /O-D "C:\Backups\DevBuilds"') do (
         if not defined latestBackup (
             set "latestBackup=%%F"
         )
@@ -215,9 +217,9 @@ if errorlevel 1 (
     mkdir "!newBackupDir!"
     echo Created backup directory: !newBackupDir!
     echo Copying C:\git\wtg\CargoWise\Dev\Bin to !newBackupDir!...
-    xcopy "C:\git\wtg\CargoWise\Dev\Bin\*" "!newBackupDir!\" /S /E /H /Y 1>nul
+    xcopy "C:\git\wtg\CargoWise\Dev\Bin\*" "!newBackupDir!\" /S /E /H /Y >NUL
     echo QGL build succeeded. Launching DB upgrade...
-    "C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
+    call "C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
 )
 
 echo.
