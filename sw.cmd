@@ -26,7 +26,7 @@ set "aliases=!aliases!shared.old=%GIT_BASE%\CargoWise\Shared;"
 set "aliases=!aliases!shared.refdata=%GIT_BASE%\RefDataRepo\Shared"
 
 :: ---------------------------------------------------------
-:: 1) Capture command-line parameters.
+:: 1) Capture command‑line parameters.
 :: ---------------------------------------------------------
 set "PARAM1=%~1"
 set "PARAM2=%~2"
@@ -116,7 +116,6 @@ if defined HAS_CHANGES (
 
 :: ---------------------------------------------------------
 :: 5) Switch to the specified branch.
-::    If the branch does not exist locally, try to create it from remote.
 :: ---------------------------------------------------------
 git rev-parse --verify "%BRANCH%" >nul 2>&1
 if errorlevel 1 (
@@ -146,20 +145,14 @@ if errorlevel 1 (
 if /I "%BRANCH%"=="master" (
     rem No pull for master branch.
 ) else (
-    :: Get upstream branch reference
     for /f "delims=" %%r in ('git rev-parse --abbrev-ref --symbolic-full-name @{u} 2^>nul') do (
         set "REMOTE_FULL=%%r"
     )
-    
-    :: Only proceed if we have a valid upstream branch
     if defined REMOTE_FULL (
-        :: Parse remote and branch name from the full reference
         for /f "tokens=1,* delims=/" %%a in ("!REMOTE_FULL!") do (
             set "REMOTE_NAME=%%a"
             set "REMOTE_BRANCH=%%b"
         )
-        
-        :: Only proceed if we successfully parsed the remote branch
         if defined REMOTE_BRANCH (
             echo Pulling from origin/!REMOTE_BRANCH!...
             git pull --rebase=true origin !REMOTE_BRANCH! --prune
@@ -207,12 +200,12 @@ if /I "%BRANCH%"=="master" (
         )
 
         echo All conflicts resolved. Continuing...
-        echo Creating auto-generated commit message...
+        echo Creating auto‑generated commit message...
         set "COMMIT_MESSAGE=Merged master into %BRANCH%. Conflicts resolved in:%CONFLICT_FILES%"
         echo Commit message:
-        echo %COMMIT_MESSAGE%
+        echo !COMMIT_MESSAGE!
         git add .
-        git commit -m "%COMMIT_MESSAGE%"
+        git commit -m "!COMMIT_MESSAGE!"
         if errorlevel 1 (
             echo Error: Commit operation failed.
             goto :error_exit
@@ -226,8 +219,8 @@ if /I "%BRANCH%"=="master" (
         ) else (
             echo Changes detected. Creating commit message...
             set "COMMIT_MESSAGE=Merged master into %BRANCH% (no conflicts)"
-            echo Commit message: %COMMIT_MESSAGE%
-            git commit -m "%COMMIT_MESSAGE%"
+            echo Commit message: !COMMIT_MESSAGE!
+            git commit -m "!COMMIT_MESSAGE!"
             if errorlevel 1 (
                 echo Error: Commit operation failed.
                 goto :error_exit
@@ -242,12 +235,10 @@ if /I "%BRANCH%"=="master" (
 :: ---------------------------------------------------------
 if /I "%cd%"=="%GIT_BASE%\CargoWise\Dev" (
     echo Copying latest successful build to Dev\Bin...
-
     for /f "delims=" %%D in ('dir /b /ad /o-d "%BACKUP_BASE%\"') do (
         set "latestBuild=%%D"
         goto :copy_build
     )
-
     :copy_build
     robocopy "%BACKUP_BASE%\!latestBuild!" "%DEV_BIN%" /MIR /XO
     if errorlevel 8 (
