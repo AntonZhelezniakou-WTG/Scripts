@@ -1,6 +1,10 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+set "GIT_BASE=C:\git\wtg"
+set "BACKUP_BASE=C:\Backups\DevBuilds"
+set "DEV_BIN=%GIT_BASE%\CargoWise\Dev\Bin"
+
 REM Prompt for branch name if not provided as an argument
 if "%~1"=="" (
     set /p BRANCH="Enter new branch name: "
