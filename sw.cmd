@@ -201,7 +201,7 @@ if /I "%BRANCH%"=="master" (
 
         echo All conflicts resolved. Continuing...
         echo Creating auto‑generated commit message...
-        set "COMMIT_MESSAGE=Merged master into %BRANCH%. Conflicts resolved in:%CONFLICT_FILES%"
+        set "COMMIT_MESSAGE=Merged master into %BRANCH%. Conflicts resolved in:!CONFLICT_FILES!"
         echo Commit message:
         echo !COMMIT_MESSAGE!
         git add .
