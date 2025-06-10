@@ -155,7 +155,7 @@ if /I "%BRANCH%"=="master" (
 		)
 		if defined REMOTE_BRANCH (
 			echo Pulling from origin/!REMOTE_BRANCH!...
-			git pull --rebase=true origin !REMOTE_BRANCH! --prune
+			git pull origin !REMOTE_BRANCH! --prune
 			if errorlevel 1 (
 				echo Could not pull from origin!
 			)
