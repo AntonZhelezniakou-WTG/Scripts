@@ -22,7 +22,7 @@ set "REFDATAREPO_PATH=c:\git\wtg\RefDataRepo\RefDataRepo"
 set "REFDATAREPO_SHARED_PATH=c:\git\wtg\RefDataRepo\Shared"
 set "BUILDS_BACKUP_DIR=C:\Backups\DevBuilds"
 set "DEV_BIN_PATH=C:\git\wtg\CargoWise\Dev\Bin"
-set "QGL_EXE_PATH=c:\WTG\QGL\qgl.exe"
+::set "QGL_EXE_PATH=c:\WTG\QGL\qgl.exe"
 set "NOTEPAD_PATH=C:\Program Files\Notepad++\notepad++.exe"
 set "UPGRADE_DBS_PATH=C:\WTG\Cmd\Devs hacks\Upgrade DBs.cmd"
 set "TEMP_PATH=%TEMP%"
@@ -185,7 +185,9 @@ echo All repositories updated. Running QGL build...
 echo ========================================
 echo.
 
-"%QGL_EXE_PATH%" build -m FULL --error-mode ShowError -v -i -r -p "%DEV_REPO_PATH%"
+::echo "%DEV_REPO_PATH%"
+::"%QGL_EXE_PATH%" build -m FULL --error-mode ShowError -v -i -r -p "%DEV_REPO_PATH%"
+qgl build -m FULL --error-mode ShowError -v -i -p "%DEV_REPO_PATH%"
 
 if errorlevel 1 (
     echo Build error occurred. Opening latest log file...
