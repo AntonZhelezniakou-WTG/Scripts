@@ -1,0 +1,1 @@
+buildQ Enterprise\Product\Core\ServiceManager\ServiceManager\ServiceManager.sln 

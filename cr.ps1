@@ -1,0 +1,127 @@
+param(
+	[string]$WorkDir,
+	[string]$BranchName
+)
+
+$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
+
+if ($WorkDir) { Set-Location $WorkDir }
+
+# --- Validate repo ---
+git rev-parse --is-inside-work-tree 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+	Write-Host "Error: not a git repository." -ForegroundColor Red
+	Wait-AnyKey
+	exit 1
+}
+
+if (-not $BranchName) {
+	Write-Host "Usage: cr <branch-name>" -ForegroundColor Red
+	Wait-AnyKey
+	exit 1
+}
+
+# --- Offer AEM/ prefix ---
+if ($BranchName -notmatch '^AEM/') {
+	Write-Host ""
+	Write-Host "Branch name does not start with 'AEM/'. Add prefix? [Y/n] " -ForegroundColor Cyan -NoNewline
+	$key = [Console]::ReadKey($true)
+	Write-Host $key.KeyChar
+	if ($key.KeyChar -match '^[Yy]$' -or $key.Key -eq 'Enter') {
+		$BranchName = "AEM/$BranchName"
+	}
+}
+
+Write-Host ""
+Write-Host "Branch: $BranchName" -ForegroundColor Cyan
+
+# --- Check remote (case-insensitive) ---
+Write-Host "Checking remote..." -ForegroundColor DarkGray
+$ErrorActionPreference = "Continue"
+$remoteRefs = git ls-remote --heads origin 2>$null
+$ErrorActionPreference = "Stop"
+
+$alreadyExistsCI = $remoteRefs | Where-Object {
+	$_ -match 'refs/heads/(.+)$' -and $Matches[1] -ieq $BranchName
+} | Select-Object -First 1
+
+if ($alreadyExistsCI) {
+	$existingName = if ($alreadyExistsCI -match 'refs/heads/(.+)$') { $Matches[1] } else { $BranchName }
+	Write-Host ""
+	Write-Host "Error: branch '$existingName' already exists on remote." -ForegroundColor Red
+	Wait-AnyKey
+	exit 1
+}
+
+# --- Choose: worktree or local branch ---
+if (-not (Ensure-Fzf)) { Wait-AnyKey; exit 1 }
+
+$options = @("Create worktree", "Create local branch")
+$choice  = Invoke-Fzf -Entries $options -ExtraArgs @("--pointer=>", "--color=pointer:green,fg+:green:bold,bg+:-1")
+
+if (-not $choice) {
+	Write-Host "Cancelled." -ForegroundColor Yellow
+	Wait-AnyKey
+	exit 0
+}
+
+$useWorktree = $choice.Trim() -eq $options[0]
+
+$wt = Get-WtPath $BranchName
+
+if ($useWorktree) {
+	if (-not (Test-Path $wt.WtRoot)) {
+		New-Item -ItemType Directory -Path $wt.WtRoot | Out-Null
+	}
+
+	Write-Host ""
+	Write-Host "== Creating worktree at '$($wt.WtPath)' ==" -ForegroundColor Cyan
+	git worktree add -b $BranchName $wt.WtPath
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "Failed to create worktree." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+
+	Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
+
+	$updCall = Get-UpdCall $wt.WtRoot
+	if ($updCall) {
+		Write-Host "Running upd.cmd..." -ForegroundColor DarkGray
+		Push-Location $wt.WtPath
+		& cmd /c $updCall
+		Pop-Location
+	}
+
+	Write-Host "Worktree created: $($wt.WtPath)" -ForegroundColor Green
+} else {
+	Write-Host ""
+	Write-Host "== Creating local branch '$BranchName' ==" -ForegroundColor Cyan
+	git checkout -b $BranchName
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "Failed to create branch." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+	Write-Host "Branch created and checked out." -ForegroundColor Green
+}
+
+# --- Offer to push to remote ---
+Write-Host ""
+if (Confirm-Action "Push '$BranchName' to origin?") {
+	$ErrorActionPreference = "Continue"
+	git push -u origin $BranchName
+	$pushExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+
+	if ($pushExit -ne 0) {
+		Write-Host "Push failed." -ForegroundColor Red
+	} else {
+		Write-Host "Pushed to origin/$BranchName." -ForegroundColor Green
+		Ensure-FetchRefspec $BranchName
+	}
+}
+
+Wait-AnyKey
+exit 0
