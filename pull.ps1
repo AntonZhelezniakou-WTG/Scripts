@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 function Invoke-Stash([string]$RepoPath, [string]$Label) {
 	$before = (git -C $RepoPath stash list 2>$null | Measure-Object).Count
 	$ErrorActionPreference = "Continue"
-	git -C $RepoPath stash push -m $Label 2>$null
+	git -C $RepoPath stash push -m $Label 2>$null | Out-Host
 	$exit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	if ($exit -ne 0) {
@@ -19,7 +19,7 @@ function Invoke-Stash([string]$RepoPath, [string]$Label) {
 		exit 1
 	}
 	$after = (git -C $RepoPath stash list 2>$null | Measure-Object).Count
-	return ($after -gt $before)
+	return [bool]($after -gt $before)
 }
 
 function Invoke-StashPop([string]$RepoPath) {
@@ -28,7 +28,7 @@ function Invoke-StashPop([string]$RepoPath) {
 	$stashRef = git -C $RepoPath stash list --max-count=1 --format="%gd" 2>$null
 
 	$ErrorActionPreference = "Continue"
-	git -C $RepoPath stash pop
+	git -C $RepoPath stash pop | Out-Host
 	$exit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 
@@ -41,17 +41,18 @@ function Invoke-StashPop([string]$RepoPath) {
 }
 
 # Pulls $BranchName in $RepoPath; pass -NoFetch if fetch was done earlier
+# Returns exit code as [int]
 function Invoke-Pull([string]$RepoPath, [string]$BranchName, [switch]$NoFetch) {
 	$remote = git -C $RepoPath config --get "branch.$BranchName.remote" 2>$null
 	if (-not $remote) {
 		Write-Host "No remote configured for '$BranchName', skipping pull." -ForegroundColor Yellow
-		return 0
+		return [int]0
 	}
 
 	if (-not $NoFetch) {
 		Write-Host "Fetching $remote/$BranchName..." -ForegroundColor Cyan
 		$ErrorActionPreference = "Continue"
-		git -C $RepoPath fetch $remote $BranchName
+		git -C $RepoPath fetch $remote $BranchName | Out-Host
 		$fetchExit = $LASTEXITCODE
 		$ErrorActionPreference = "Stop"
 		if ($fetchExit -ne 0) {
@@ -62,21 +63,21 @@ function Invoke-Pull([string]$RepoPath, [string]$BranchName, [switch]$NoFetch) {
 	}
 
 	$behind = git -C $RepoPath rev-list --count "${BranchName}..$remote/$BranchName" 2>$null
-	if ($behind -eq "0") { return 0 }
+	if ($behind -eq "0") { return [int]0 }
 
 	Write-Host "Pulling $remote/$BranchName..." -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
-	git -C $RepoPath merge --ff-only "$remote/$BranchName"
+	git -C $RepoPath merge --ff-only "$remote/$BranchName" | Out-Host
 	$pullExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
-	return $pullExit
+	return [int]$pullExit
 }
 
 function Get-BranchBehind([string]$RepoPath, [string]$BranchName) {
 	$r = git -C $RepoPath config --get "branch.$BranchName.remote" 2>$null
-	if (-not $r) { return 0 }
+	if (-not $r) { return [int]0 }
 	$tracked = git -C $RepoPath rev-parse --verify "$r/$BranchName" 2>$null
-	if (-not $tracked) { return 0 }
+	if (-not $tracked) { return [int]0 }
 	$count = git -C $RepoPath rev-list --count "${BranchName}..${r}/${BranchName}" 2>$null
 	return [int]$count
 }
@@ -88,10 +89,10 @@ function Invoke-PullCurrentIfBehind([string]$RepoPath, [string]$BranchName) {
 	if (Confirm-Action "'$BranchName' is $behind commit(s) behind its remote. Pull now?") {
 		$r = git -C $RepoPath config --get "branch.$BranchName.remote" 2>$null
 		Write-Host "Fetching $r/${BranchName}..." -ForegroundColor Cyan
-		git -C $RepoPath fetch $r $BranchName
+		git -C $RepoPath fetch $r $BranchName | Out-Host
 		Write-Host "Pulling $r/${BranchName}..." -ForegroundColor Cyan
 		$ErrorActionPreference = "Continue"
-		git -C $RepoPath merge --ff-only "$r/$BranchName"
+		git -C $RepoPath merge --ff-only "$r/$BranchName" | Out-Host
 		$ErrorActionPreference = "Stop"
 	}
 }
@@ -142,7 +143,7 @@ if ($isMainTarget) {
 
 	Write-Host "Fetching $remote/$baseBranch..." -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
-	git fetch $remote $baseBranch
+	git fetch $remote $baseBranch | Out-Host
 	$fetchExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	if ($fetchExit -ne 0) {
@@ -206,7 +207,7 @@ if ($isMainTarget) {
 
 		if ($mainStashed) { Invoke-StashPop $mainPath }
 
-		$mmScript = Join-Path $PSScriptRoot "mm.ps1"
+		$mmScript = Join-Path $PSScriptRoot "pump.ps1"
 		if (-not $masterUpToDate) {
 			& $mmScript -WorkDir $here -Force
 		}
@@ -224,7 +225,7 @@ if ($isMainTarget) {
 		$stashed = Invoke-Stash $here "auto-stash before pull $baseBranch"
 	}
 
-	git checkout $baseBranch
+	git checkout $baseBranch | Out-Host
 	if ($LASTEXITCODE -ne 0) {
 		Write-Host "Cannot switch to '$baseBranch'." -ForegroundColor Red
 		if ($stashed) { Invoke-StashPop $here }
@@ -234,7 +235,7 @@ if ($isMainTarget) {
 
 	$pullExit = Invoke-Pull $here $baseBranch -NoFetch
 
-	git checkout $branch
+	git checkout $branch | Out-Host
 	if ($LASTEXITCODE -ne 0) {
 		Write-Host "Cannot switch back to '$branch'." -ForegroundColor Red
 		if ($stashed) { Invoke-StashPop $here }
@@ -249,7 +250,7 @@ if ($isMainTarget) {
 		exit 1
 	}
 
-	$mmScript = Join-Path $PSScriptRoot "mm.ps1"
+	$mmScript = Join-Path $PSScriptRoot "pump.ps1"
 	if (-not $masterUpToDate) {
 		& $mmScript -WorkDir $here -Force
 	}
@@ -270,7 +271,7 @@ if ($LASTEXITCODE -ne 0 -or -not $remote) {
 
 Write-Host "Fetching $remote/$branch..." -ForegroundColor Cyan
 $ErrorActionPreference = "Continue"
-git fetch $remote $branch
+git fetch $remote $branch | Out-Host
 $fetchExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 if ($fetchExit -ne 0) {
@@ -281,7 +282,7 @@ if ($fetchExit -ne 0) {
 
 Write-Host "Pulling $remote/$branch..." -ForegroundColor Cyan
 $ErrorActionPreference = "Continue"
-git pull $remote $branch
+git pull $remote $branch | Out-Host
 $pullExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 
@@ -308,7 +309,7 @@ if ($dirty) {
 	$stashed = Invoke-Stash $here "auto-stash before pull $remote/$branch"
 
 	$ErrorActionPreference = "Continue"
-	git pull $remote $branch
+	git pull $remote $branch | Out-Host
 	$pullExit2 = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 

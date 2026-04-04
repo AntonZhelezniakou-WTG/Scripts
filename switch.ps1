@@ -139,7 +139,7 @@ function Invoke-MergeWithResolution {
 	}
 }
 
-# Delete a branch by delegating to dd.ps1 which lives next to this script.
+# Delete a branch by delegating to delete.ps1 which lives next to this script.
 function Remove-Branch {
 	param([string]$BranchName)
 
@@ -149,9 +149,9 @@ function Remove-Branch {
 		return
 	}
 
-	$ddPs1 = Join-Path $PSScriptRoot "dd.ps1"
+	$ddPs1 = Join-Path $PSScriptRoot "delete.ps1"
 	if (-not (Test-Path $ddPs1)) {
-		Write-Host "Error: dd.ps1 not found next to ch.ps1" -ForegroundColor Red
+		Write-Host "Error: delete.ps1 not found next to switch.ps1" -ForegroundColor Red
 		Wait-AnyKey
 		return
 	}
@@ -390,6 +390,7 @@ while ($true) {
 
 	$esc    = [char]27
 	$yellow = "$esc[93m"
+	$cyan   = "$esc[96m"
 	$bold   = "$esc[1m"
 	$reset  = "$esc[0m"
 
@@ -397,11 +398,13 @@ while ($true) {
 		$padded  = $_.Branch.PadRight($maxLen)
 		$padBase = $_.SyncBase.PadRight($maxBaseLen)
 		$line    = "$($_.Marker) $padded    $padBase    $($_.SyncOrigin)$($_.Dirty)"
-		if ($_.Marker -eq "*") { "${bold}${yellow}${line}${reset}" } else { $line }
+		if ($_.Marker -eq "*")     { "${bold}${yellow}${line}${reset}" }
+		elseif ($_.Marker -eq "+") { "${cyan}${line}${reset}" }
+		else { $line }
 	}
 
 	$lines = $menuEntries | fzf `
-		--style=minimal --no-input --disabled --height=40% --no-info --layout=reverse `
+		--style=minimal --height=40% --no-info --layout=reverse `
 		--pointer=">" --gutter=" " `
 		--color="pointer:green,fg+:green:bold,bg+:-1" `
 		--ansi `

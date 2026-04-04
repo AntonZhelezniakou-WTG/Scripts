@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $BranchName) {
-	Write-Host "Usage: cr <branch-name>" -ForegroundColor Red
+	Write-Host "Usage: create <branch-name>" -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }

@@ -9,7 +9,7 @@ if errorlevel 1 (
 )
 
 :: Resolve the .ps1 file next to this .cmd
-set "PS1=%~dp0ch.ps1"
+set "PS1=%~dp0switch.ps1"
 
 if not exist "%PS1%" (
     echo Error: git-checkout.ps1 not found next to %~f0

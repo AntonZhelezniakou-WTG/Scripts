@@ -1,1 +1,1 @@
-buildQ Enterprise\Product\Core\ServiceManager\ServiceManager\ServiceManager.sln 
+build Enterprise\Product\Core\ServiceManager\ServiceManager\ServiceManager.sln

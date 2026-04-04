@@ -31,14 +31,105 @@ function Get-RepoRoot {
 	return $currentDir
 }
 
-# Resolve worktree root (.{repo}.wt) and target path for a branch.
-# Uses Get-RepoRoot to preserve symlinks.
+# Load Paths.json config. Returns defaults if file is missing.
+function Get-PathsConfig {
+	$configPath = Join-Path $PSScriptRoot "Configuration\Paths.json"
+	if (Test-Path $configPath) {
+		return Get-Content $configPath -Raw | ConvertFrom-Json
+	}
+	return [PSCustomObject]@{
+		githubBase      = "C:\git\GitHub"
+		worktreeBase    = "D:\wt"
+		defaultOwner    = "WiseTechGlobal"
+		ownerAliases    = @()
+		worktreeAliases = @()
+	}
+}
+
+# Get remote repo names for a GitHub owner from Configuration\RepoCache.json.
+# Fetches via gh CLI when ForceRefresh is set or entry is absent.
+# Cache has no automatic expiry — refresh explicitly with -ForceRefresh.
+function Get-CachedRemoteRepos {
+	param([string]$Owner, [switch]$ForceRefresh)
+
+	$cachePath = Join-Path $PSScriptRoot "Configuration\RepoCache.json"
+	$cache = @{}
+	if (Test-Path $cachePath) {
+		try { $cache = Get-Content $cachePath -Raw | ConvertFrom-Json -AsHashtable } catch {}
+	}
+
+	if (-not $ForceRefresh -and $cache.ContainsKey($Owner) -and $cache[$Owner].repos) {
+		return @($cache[$Owner].repos)
+	}
+
+	if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+		return if ($cache.ContainsKey($Owner)) { @($cache[$Owner].repos) } else { @() }
+	}
+
+	$ErrorActionPreference = "Continue"
+	$json = gh repo list $Owner --limit 200 --json name 2>$null
+	$ErrorActionPreference = "Stop"
+
+	$repos = @()
+	if ($json) {
+		try { $repos = @(($json | ConvertFrom-Json) | ForEach-Object { $_.name }) } catch {}
+	}
+
+	$cache[$Owner] = @{ cachedAt = (Get-Date -Format 'o'); repos = $repos }
+
+	$configDir = Join-Path $PSScriptRoot "Configuration"
+	if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
+	$cache | ConvertTo-Json -Depth 3 | Set-Content $cachePath -Encoding UTF8
+
+	return $repos
+}
+
+# Compute the worktree subfolder name from a branch name.
+# Short mode (shortFolderNames = true in config):
+#   - drops path prefix (e.g. AEM/ is stripped)
+#   - strips leading WI (case-insensitive) when immediately followed by a digit
+#   - truncates to 30 characters
+# Standard mode: replaces / with _
+function Get-WtFolderName {
+	param([string]$BranchName, [bool]$Short = $false)
+	if ($Short) {
+		$name = $BranchName -replace '^.+/', ''          # drop prefix: AEM/foo -> foo
+		$name = $name -replace '(?i)^WI(?=\d)', ''       # WI00123... -> 00123...
+		if ($name.Length -gt 30) { $name = $name.Substring(0, 30) }
+		return $name
+	}
+	return $BranchName -replace '/', '_'
+}
+
+# Resolve worktree root and target path for a branch.
+# Worktrees are stored under worktreeBase (Paths.json), e.g. D:\wt\{repo}\{branch}.
+# worktreeAliases can override the folder name and enable short folder names (max 30 chars).
 function Get-WtPath {
 	param([string]$BranchName)
-	$repoRoot   = Get-RepoRoot
-	$repoName   = Split-Path $repoRoot -Leaf
-	$wtRoot     = Join-Path (Split-Path $repoRoot -Parent) ".$repoName.wt"
-	$folderName = $BranchName -replace "/", "_"
+	$config   = Get-PathsConfig
+	$wtBase   = $config.worktreeBase
+	$repoRoot = Get-RepoRoot
+	$repoName = Split-Path $repoRoot -Leaf
+
+	# Derive full repo name (Owner/Repo) from remote URL for alias lookup
+	$ErrorActionPreference = "Continue"
+	$remoteUrl = git remote get-url origin 2>$null
+	$ErrorActionPreference = "Stop"
+	$fullName = if ($remoteUrl -match 'github\.com[/:](.+?)(?:\.git)?$') { $Matches[1] } else { $repoName }
+
+	# Check worktree aliases for folder name override and short-name flag
+	$wtFolder  = $repoName
+	$useShort  = $false
+	foreach ($alias in $config.worktreeAliases) {
+		if ($alias.repo -ieq $fullName) {
+			if ($alias.worktreeFolder) { $wtFolder = $alias.worktreeFolder }
+			$useShort = [bool]$alias.shortFolderNames
+			break
+		}
+	}
+
+	$wtRoot     = Join-Path $wtBase $wtFolder
+	$folderName = Get-WtFolderName -BranchName $BranchName -Short $useShort
 	return [PSCustomObject]@{
 		WtRoot   = $wtRoot
 		WtPath   = Join-Path $wtRoot $folderName
@@ -47,7 +138,8 @@ function Get-WtPath {
 }
 
 # Find the main worktree path (where .git is a directory, not a file).
-# Tries .{repo}.wt naming convention first, then falls back to git worktree list.
+# Falls back to git worktree list, which handles both old (.{repo}.wt) and
+# new (D:\wt\{folder}) worktree locations.
 function Get-MainWorktreePath {
 	param([string]$RepoRoot)
 	if (-not $RepoRoot) { $RepoRoot = Get-RepoRoot }
@@ -56,21 +148,13 @@ function Get-MainWorktreePath {
 	# Already main worktree — .git is a directory
 	if ([System.IO.Directory]::Exists($gitEntry)) { return $RepoRoot }
 
-	# Worktree — .git is a file; try .{repo}.wt convention
-	$wtDir  = Split-Path $RepoRoot -Parent
-	$wtName = Split-Path $wtDir -Leaf
-	if ($wtName -match '^\.(.*?)\.wt$') {
-		$candidate = Join-Path (Split-Path $wtDir -Parent) $Matches[1]
-		if ([System.IO.Directory]::Exists((Join-Path $candidate ".git"))) {
-			return $candidate
-		}
-	}
-
 	# Fallback: git worktree list
+	# git outputs paths with forward slashes on Windows — normalise to backslashes
+	# so that string comparisons (StartsWith etc.) work correctly against PS paths.
 	$lines = git worktree list --porcelain 2>$null
 	foreach ($line in $lines) {
 		if ($line -match '^worktree (.+)') {
-			$wt = $Matches[1].Trim()
+			$wt = $Matches[1].Trim().Replace('/', '\')
 			if ([System.IO.Directory]::Exists((Join-Path $wt ".git"))) {
 				return $wt
 			}

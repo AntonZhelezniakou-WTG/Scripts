@@ -3,22 +3,22 @@
         "value":  [
                       {
                           "value":  [
-                                        "@{Path=C:/git/GitHub/WiseTechGlobal/DevTools; Name=WiseTechGlobal/DevTools; Remote=https://github.com/WiseTechGlobal/DevTools}",
-                                        "@{Path=C:\\git\\GitHub\\WiseTechGlobal\\DevTools; Name=WiseTechGlobal/DevTools; Remote=https://github.com/WiseTechGlobal/DevTools}"
+                                        "@{value=System.Object[]; Count=2}",
+                                        "@{Path=D:\\GitHub\\WiseTechGlobal\\.DevTools.wt\\AEM_WI00903170_Remove_braches_from_combined_2; Name=WiseTechGlobal/DevTools; Remote=https://github.com/WiseTechGlobal/DevTools.git}"
                                     ],
                           "Count":  2
                       },
                       {
-                          "Path":  "D:\\GitHub\\WiseTechGlobal\\.DevTools.wt\\AEM_WI00903170_Remove_braches_from_combined_2",
-                          "Name":  "WiseTechGlobal/DevTools",
-                          "Remote":  "https://github.com/WiseTechGlobal/DevTools.git"
+                          "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Shared",
+                          "Name":  "WiseTechGlobal/CargoWise.Shared",
+                          "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Shared"
                       }
                   ],
         "Count":  2
     },
     {
-        "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Shared",
-        "Name":  "WiseTechGlobal/CargoWise.Shared",
-        "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Shared"
+        "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Database",
+        "Name":  "WiseTechGlobal/CargoWise.Database",
+        "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Database"
     }
 ]

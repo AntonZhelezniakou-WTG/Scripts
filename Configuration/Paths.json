@@ -1,0 +1,22 @@
+{
+	"githubBase": "C:\\git\\GitHub",
+	"worktreeBase": "D:\\wt",
+	"defaultOwner": "WiseTechGlobal",
+	"ownerAliases": [
+		{
+			"githubOwner": "AntonZhelezniakou-WTG",
+			"localPath": "C:\\git\\GitHub\\WiseTechGlobal\\Personal"
+		},
+		{
+			"githubOwner": "ZelAnton",
+			"localPath": "C:\\git\\GitHub\\Personal"
+		}
+	],
+	"worktreeAliases": [
+		{
+			"repo": "WiseTechGlobal/CargoWise",
+			"worktreeFolder": "CW",
+			"shortFolderNames": true
+		}
+	]
+}

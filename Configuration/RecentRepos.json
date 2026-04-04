@@ -2,5 +2,8 @@
   "wtg": [
     "CargoWise.Database",
     "CargoWise.Shared"
+  ],
+  "wisetechglobal": [
+    "DevTools"
   ]
 }

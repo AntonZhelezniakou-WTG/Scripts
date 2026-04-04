@@ -7,12 +7,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+. (Join-Path $PSScriptRoot "common.ps1")
 
-$owners = @(
-	"WiseTechGlobal",
-	"AntonZhelezniakou-WTG",
-	"ZelAnton"
-)
+# Build owner list from Paths.json: defaultOwner first, then all ownerAliases
+$_cfg    = Get-PathsConfig
+$owners  = @($_cfg.defaultOwner) + @($_cfg.ownerAliases | ForEach-Object { $_.githubOwner })
 
 # Determine if $Repo is a full URL or just a name
 if ($Repo -match "^https?://" -or $Repo -match "^git@") {

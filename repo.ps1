@@ -7,13 +7,14 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "common.ps1")
 
 # ---------------------------------------------------------
-# Paths
+# Paths (derived from Paths.json config)
 # ---------------------------------------------------------
-$GIT_BASE            = "C:\git"
-$GITHUB_BASE         = "$GIT_BASE\GitHub"
-$GITHUB_WTG_BASE     = "$GITHUB_BASE\WiseTechGlobal"
-$GITHUB_WTG_PERSONAL = "$GITHUB_WTG_BASE\Personal"
-$CargoWise           = "$GITHUB_WTG_BASE\CargoWise"
+$_pathsCfg           = Get-PathsConfig
+$GITHUB_BASE         = $_pathsCfg.githubBase
+$GIT_BASE            = Split-Path $GITHUB_BASE -Parent
+$GITHUB_WTG_BASE     = Join-Path $GITHUB_BASE "WiseTechGlobal"
+$GITHUB_WTG_PERSONAL = Join-Path $GITHUB_WTG_BASE "Personal"
+$CargoWise           = Join-Path $GITHUB_WTG_BASE "CargoWise"
 
 # ---------------------------------------------------------
 # Aliases: name -> path
@@ -95,40 +96,40 @@ function Save-RecentRepo([string]$Context, [string]$RepoName) {
 # Context detection
 # ---------------------------------------------------------
 function Get-RepoContext {
-	$cwd = (Get-Location).Path
+	$config = Get-PathsConfig
+	$cwd    = (Get-Location).Path
 
-	# WiseTechGlobal\Personal (personal work projects)
-	if ($cwd -match '^(.+\\GitHub)\\WiseTechGlobal\\Personal(\\|$)') {
-		return @{
-			Context   = "wtg-personal"
-			RepoBase  = "$($Matches[1])\WiseTechGlobal\Personal"
-			GitHubOrg = "AntonZhelezniakou-WTG"
+	# Check owner aliases first, longest path wins (most specific)
+	$sorted = @($config.ownerAliases) | Sort-Object { $_.localPath.Length } -Descending
+	foreach ($alias in $sorted) {
+		$escaped = '^' + [regex]::Escape($alias.localPath.TrimEnd('\')) + '(\\|$)'
+		if ($cwd -imatch $escaped) {
+			$contextKey = ($alias.githubOwner -replace '[^a-zA-Z0-9]', '-').ToLower()
+			return @{
+				Context   = $contextKey
+				RepoBase  = $alias.localPath
+				GitHubOrg = $alias.githubOwner
+			}
 		}
 	}
 
-	# WiseTechGlobal (org projects)
-	if ($cwd -match '^(.+\\GitHub)\\WiseTechGlobal(\\|$)') {
+	# Check standard paths: {githubBase}\{Owner}
+	$escaped = '^' + [regex]::Escape($config.githubBase.TrimEnd('\')) + '\\([^\\]+)(\\|$)'
+	if ($cwd -imatch $escaped) {
+		$owner = $Matches[1]
 		return @{
-			Context   = "wtg"
-			RepoBase  = "$($Matches[1])\WiseTechGlobal"
-			GitHubOrg = "WiseTechGlobal"
+			Context   = $owner.ToLower()
+			RepoBase  = Join-Path $config.githubBase $owner
+			GitHubOrg = $owner
 		}
 	}
 
-	# GitHub\Personal (non-work personal projects)
-	if ($cwd -match '^(.+\\GitHub)\\Personal(\\|$)') {
-		return @{
-			Context   = "personal"
-			RepoBase  = "$($Matches[1])\Personal"
-			GitHubOrg = "ZelAnton"
-		}
-	}
-
-	# Default: WiseTechGlobal
+	# Default
+	$defaultOwner = if ($config.defaultOwner) { $config.defaultOwner } else { "WiseTechGlobal" }
 	return @{
-		Context   = "wtg"
-		RepoBase  = $GITHUB_WTG_BASE
-		GitHubOrg = "WiseTechGlobal"
+		Context   = $defaultOwner.ToLower()
+		RepoBase  = Join-Path $config.githubBase $defaultOwner
+		GitHubOrg = $defaultOwner
 	}
 }
 
@@ -145,126 +146,90 @@ function Get-LocalRepos([string]$RepoBase) {
 }
 
 # ---------------------------------------------------------
-# Clone from GitHub
-# ---------------------------------------------------------
-function Invoke-CloneFromGitHub([string]$GitHubOrg, [string]$RepoBase, [string]$Context) {
-	$ghCmd = Get-Command gh -ErrorAction SilentlyContinue
-	if (-not $ghCmd) {
-		Write-Host "GitHub CLI (gh) is required. Install from https://cli.github.com" -ForegroundColor Red
-		Wait-AnyKey
-		return $null
-	}
-
-	Write-Host "Fetching repos from $GitHubOrg..." -ForegroundColor Cyan
-	$ErrorActionPreference = "Continue"
-	$remoteRepos = gh repo list $GitHubOrg --limit 200 --json name -q ".[].name" 2>$null
-	$ErrorActionPreference = "Stop"
-	if (-not $remoteRepos) {
-		Write-Host "No repos found or access denied." -ForegroundColor Red
-		Wait-AnyKey
-		return $null
-	}
-
-	# Exclude already cloned
-	$localRepos = Get-LocalRepos $RepoBase
-	$available = @($remoteRepos) | Where-Object { $localRepos -notcontains $_ } | Sort-Object
-	if (-not $available) {
-		Write-Host "All repos already cloned." -ForegroundColor Yellow
-		Wait-AnyKey
-		return $null
-	}
-
-	[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-	$selected = $available | fzf `
-		--style=minimal --height=50% --no-info --layout=reverse `
-		--pointer=">" --gutter=" " `
-		--color="pointer:green,fg+:green:bold,bg+:-1" `
-		--header="Clone from $GitHubOrg (Enter to clone, Esc to cancel):" `
-		--header-first
-
-	if (-not $selected) { return $null }
-
-	$targetDir = Join-Path $RepoBase $selected
-	$cloneScript = Join-Path $PSScriptRoot "clone.ps1"
-	& $cloneScript -Repo "https://github.com/$GitHubOrg/$selected.git" -Directory $targetDir
-	if ($LASTEXITCODE -ne 0) {
-		Write-Host "Clone failed." -ForegroundColor Red
-		Wait-AnyKey
-		return $null
-	}
-
-	Save-RecentRepo $Context $selected
-	return $targetDir
-}
-
-# ---------------------------------------------------------
 # No-param mode: interactive repo selector
 # ---------------------------------------------------------
 if (-not $Param1) {
-	$ctx = Get-RepoContext
+	$ctx       = Get-RepoContext
 	$context   = $ctx.Context
 	$repoBase  = $ctx.RepoBase
 	$githubOrg = $ctx.GitHubOrg
-
-	$allRepos = Get-LocalRepos $repoBase
-	$recent   = Get-RecentRepos $context | Where-Object { $allRepos -contains $_ }
-
-	# Build fzf input: recent, separator, rest
 	$separator = [string][char]0x2500 * 30
-	$nonRecent = $allRepos | Where-Object { $recent -notcontains $_ }
-
-	$fzfInput = @()
-	if ($recent.Count -gt 0) {
-		$fzfInput += $recent
-		$fzfInput += $separator
-	}
-	$fzfInput += $nonRecent
-
-	if ($fzfInput.Count -eq 0) {
-		Write-Host "No repositories found in $repoBase" -ForegroundColor Yellow
-		Write-Host "Press Ctrl+N to clone from GitHub." -ForegroundColor DarkGray
-	}
+	$ghPrefix  = "[↓] "
 
 	[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-	$output = $fzfInput | fzf `
-		--style=minimal --height=50% --no-info --layout=reverse `
-		--pointer=">" --gutter=" " `
-		--color="pointer:green,fg+:green:bold,bg+:-1" `
-		--header="Select repository (Ctrl+N: clone from $githubOrg):" `
-		--header-first `
-		--expect="ctrl-n"
 
-	$lines = @($output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
-	$key      = if ($lines.Count -ge 2) { $lines[0] } else { "" }
-	$selected = if ($lines.Count -ge 2) { $lines[1] } elseif ($lines.Count -eq 1 -and $key -ne "ctrl-n") { $lines[0] } else { "" }
+	while ($true) {
+		$allRepos    = Get-LocalRepos $repoBase
+		$remoteRepos = Get-CachedRemoteRepos -Owner $githubOrg
+		$remoteOnly  = @($remoteRepos | Where-Object { $allRepos -notcontains $_ })
+		$recent      = @(Get-RecentRepos $context | Where-Object { $allRepos -contains $_ })
+		$nonRecent   = $allRepos | Where-Object { $recent -notcontains $_ }
 
-	# Handle Ctrl+N: clone from GitHub
-	if ($key -eq "ctrl-n") {
-		$clonedPath = Invoke-CloneFromGitHub $githubOrg $repoBase $context
-		if ($clonedPath -and $env:WT_SESSION) {
-			$tabTitle = Split-Path $clonedPath -Leaf
-			wt --window 0 new-tab --title $tabTitle --startingDirectory $clonedPath cmd /k
+		$fzfInput = @()
+		if ($recent.Count -gt 0) {
+			$fzfInput += $recent
+			$fzfInput += $separator
+		}
+		$fzfInput += $nonRecent
+		if ($remoteOnly.Count -gt 0) {
+			$fzfInput += $separator
+			$fzfInput += $remoteOnly | ForEach-Object { "$ghPrefix$_" }
+		}
+
+		$output = $fzfInput | fzf `
+			--style=minimal --height=50% --no-info --layout=reverse `
+			--pointer=">" --gutter=" " `
+			--color="pointer:green,fg+:green:bold,bg+:-1" `
+			--header="Select repository (Ctrl+R: refresh):" `
+			--header-first `
+			--expect="ctrl-r"
+
+		$lines    = @($output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+		$key      = if ($lines.Count -ge 2) { $lines[0] } else { "" }
+		$selected = if ($lines.Count -ge 2) { $lines[1] } elseif ($lines.Count -eq 1 -and $key -ne "ctrl-r") { $lines[0] } else { "" }
+
+		# Ctrl+R: refresh remote cache and redraw
+		if ($key -eq "ctrl-r") {
+			Write-Host "Refreshing repository list for $githubOrg..." -ForegroundColor Cyan
+			Get-CachedRemoteRepos -Owner $githubOrg -ForceRefresh | Out-Null
+			continue
+		}
+
+		# Ignore separator or empty
+		if (-not $selected -or $selected -match "^$([char]0x2500)+$") {
+			exit 0
+		}
+
+		# Remote-only repo selected: offer to clone
+		if ($selected.StartsWith($ghPrefix)) {
+			$repoName  = $selected.Substring($ghPrefix.Length)
+			$targetDir = Join-Path $repoBase $repoName
+			if (Confirm-Action "Clone '$repoName' from ${githubOrg}?") {
+				$cloneScript = Join-Path $PSScriptRoot "clone.ps1"
+				& $cloneScript -Repo "https://github.com/$githubOrg/$repoName.git" -Directory $targetDir
+				if ($LASTEXITCODE -eq 0) {
+					Save-RecentRepo $context $repoName
+					if ($env:WT_SESSION) {
+						wt --window 0 new-tab --title $repoName --startingDirectory $targetDir cmd /k
+					}
+				}
+			}
+			exit 0
+		}
+
+		# Local repo selected
+		$targetPath = Join-Path $repoBase $selected
+		if (-not (Test-Path $targetPath)) {
+			Write-Host "Path not found: $targetPath" -ForegroundColor Red
+			exit 1
+		}
+
+		Save-RecentRepo $context $selected
+		if ($env:WT_SESSION) {
+			wt --window 0 new-tab --title $selected --startingDirectory $targetPath cmd /k
 		}
 		exit 0
 	}
-
-	# Ignore separator selection or empty
-	if (-not $selected -or $selected -match "^$([char]0x2500)+$") {
-		exit 0
-	}
-
-	$targetPath = Join-Path $repoBase $selected
-	if (-not (Test-Path $targetPath)) {
-		Write-Host "Path not found: $targetPath" -ForegroundColor Red
-		exit 1
-	}
-
-	Save-RecentRepo $context $selected
-
-	if ($env:WT_SESSION) {
-		wt --window 0 new-tab --title $selected --startingDirectory $targetPath cmd /k
-	}
-	exit 0
 }
 
 # ---------------------------------------------------------
@@ -470,7 +435,7 @@ if ($branch -ne "master" -and $branch -ne "main") {
 # 6) Merge master into current branch (skip for master)
 # ---------------------------------------------------------
 if ($branch -ne "master" -and $branch -ne "main") {
-	$mmScript = Join-Path $PSScriptRoot "mm.ps1"
+	$mmScript = Join-Path $PSScriptRoot "pump.ps1"
 	& $mmScript -WorkDir (Get-Location).Path
 }
 

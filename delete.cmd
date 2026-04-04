@@ -9,13 +9,13 @@ if errorlevel 1 (
 )
 
 if "%~1"=="" (
-    echo Usage: dd ^<branch^> ^| ^<worktree-name^> ^| ^<worktree-path^>
+    echo Usage: delete ^<branch^> ^| ^<worktree-name^> ^| ^<worktree-path^>
     exit /b 1
 )
 
-set "PS1=%~dp0dd.ps1"
+set "PS1=%~dp0delete.ps1"
 if not exist "%PS1%" (
-    echo Error: dd.ps1 not found next to %~f0
+    echo Error: delete.ps1 not found next to %~f0
     pause
     exit /b 1
 )

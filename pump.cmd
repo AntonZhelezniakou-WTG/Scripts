@@ -7,5 +7,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0st.ps1" "%CD%"
+pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0pump.ps1" "%CD%"
 exit /b %ERRORLEVEL%

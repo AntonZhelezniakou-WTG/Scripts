@@ -35,7 +35,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $Target) {
-	Write-Host "Usage: dd <branch> | <worktree-name> | <worktree-path>" -ForegroundColor Yellow
+	Write-Host "Usage: delete <branch> | <worktree-name> | <worktree-path>" -ForegroundColor Yellow
 	exit 1
 }
 
