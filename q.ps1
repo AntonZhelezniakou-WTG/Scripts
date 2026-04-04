@@ -111,6 +111,13 @@ function ConvertTo-RelEntry([string]$FilePath) {
 
 # ── Resolve file list ─────────────────────────────────────────────────────────
 
+$scanMessageShown = $false
+
+if ($NoCache -or -not (Test-Path $configFile)) {
+	Write-Host "Scanning for Build.xml files..." -ForegroundColor DarkGray
+	$scanMessageShown = $true
+}
+
 $repoKey = Get-RepoKey
 $files   = $null
 $recent  = @()
@@ -128,7 +135,9 @@ if (-not $NoCache -and $repoKey) {
 }
 
 if (-not $files) {
-	Write-Host "Scanning for Build.xml files..." -ForegroundColor DarkGray
+	if (-not $scanMessageShown) {
+		Write-Host "Scanning for Build.xml files..." -ForegroundColor DarkGray
+	}
 	$files = @(Find-BuildFiles $repoRoot)
 	if ($files.Count -eq 0) {
 		Write-Host "No Build.xml files found." -ForegroundColor Yellow

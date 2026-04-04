@@ -390,6 +390,7 @@ while ($true) {
 
 	$esc    = [char]27
 	$yellow = "$esc[93m"
+	$cyan   = "$esc[96m"
 	$bold   = "$esc[1m"
 	$reset  = "$esc[0m"
 
@@ -397,11 +398,13 @@ while ($true) {
 		$padded  = $_.Branch.PadRight($maxLen)
 		$padBase = $_.SyncBase.PadRight($maxBaseLen)
 		$line    = "$($_.Marker) $padded    $padBase    $($_.SyncOrigin)$($_.Dirty)"
-		if ($_.Marker -eq "*") { "${bold}${yellow}${line}${reset}" } else { $line }
+		if ($_.Marker -eq "*")   { "${bold}${yellow}${line}${reset}" }
+		elseif ($_.Marker -eq "+") { "${cyan}${line}${reset}" }
+		else { $line }
 	}
 
 	$lines = $menuEntries | fzf `
-		--style=minimal --no-input --disabled --height=40% --no-info --layout=reverse `
+		--style=minimal --height=40% --no-info --layout=reverse `
 		--pointer=">" --gutter=" " `
 		--color="pointer:green,fg+:green:bold,bg+:-1" `
 		--ansi `
