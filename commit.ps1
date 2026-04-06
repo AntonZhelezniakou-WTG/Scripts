@@ -273,6 +273,32 @@ if (-not $commitMessage) {
 	exit 1
 }
 
+# Show staged files and final message
+$stagedFiles = @(git diff --cached --name-status)
+$stagedParsed = Parse-StatusLines $stagedFiles
+$total = $stagedParsed.Count
+$shown = $stagedParsed | Select-Object -First 20
+
+Write-Host ""
+foreach ($f in $shown) {
+	$color = switch ($f.Status) { 'A' { "Green" } 'D' { "Red" } 'M' { "DarkYellow" } default { "DarkGray" } }
+	$display = if ($f.OldPath) { "$($f.OldPath) -> $($f.Path)" } else { $f.Path }
+	Write-Host "  $($f.Status)  $display" -ForegroundColor $color
+}
+if ($total -gt 20) {
+	Write-Host "  ... and $($total - 20) more" -ForegroundColor DarkGray
+}
+
+Write-Host ""
+Write-Host "Commit message:" -ForegroundColor Cyan
+Write-Host $commitMessage -ForegroundColor White
+Write-Host ""
+if (-not (Confirm-Action "Commit?")) {
+	Write-Host "Aborted." -ForegroundColor DarkGray
+	git reset HEAD 2>$null
+	exit 0
+}
+
 # ── Phase 5: Commit ─────────────────────────────────────────────────────────
 
 $msgFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "COMMIT_MSG.txt")
