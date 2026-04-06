@@ -99,12 +99,18 @@ $diff
 "@
 
 	$ErrorActionPreference = "Continue"
-	$result = (copilot -p $prompt -s --no-auto-update 2>$null)
+	$model = "gpt-5.4-mini"
+	$errFile = [System.IO.Path]::GetTempFileName()
+	$result = (copilot -p $prompt -s --no-auto-update --effort medium "--model=$model" 2>$errFile)
 	$exit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 
+	$errText = if (Test-Path $errFile) { (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) } else { "" }
+	Remove-Item $errFile -ErrorAction SilentlyContinue
+
 	if ($exit -ne 0 -or -not $result) {
-		Write-Host "[warn] copilot failed (exit $exit)." -ForegroundColor Yellow
+		$msg = if ($errText) { $errText.Trim() } else { "exit $exit, no output" }
+		Write-Host "[warn] copilot: $msg" -ForegroundColor Yellow
 		return $null
 	}
 
