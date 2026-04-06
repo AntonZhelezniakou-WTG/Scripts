@@ -167,7 +167,7 @@ while ($true) {
 		'--style=minimal', '--height=80%', '--no-info', '--layout=reverse'
 		'--pointer=>', '--gutter= ', '--marker=>'
 		'--color=pointer:green,fg+:green:bold,bg+:-1'
-		'--header=Space=toggle, Del=discard, Enter=confirm, Esc=cancel'
+		'--header=Space=toggle, Del=discard, Ctrl+Enter=confirm, Esc=cancel'
 		'--header-first'
 		"--delimiter=`t"
 		'--with-nth=1'
@@ -175,6 +175,8 @@ while ($true) {
 		'--preview-window=right,60%,wrap'
 		'--bind=start:select-all+hide-input'
 		'--bind=space:toggle'
+		'--bind=enter:ignore'
+		'--bind=ctrl-j:accept'
 		'--expect=del'
 	)
 	$lines = $fzfEntries | fzf @fzfArgs
