@@ -241,27 +241,10 @@ if (-not $aiMessage) {
 
 $tempFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.txt'
 
-# micro prompts "Save changes?" on Ctrl+Q if buffer is modified.
-# To ensure it always prompts (even when accepting AI message as-is),
-# we append a marker line that makes the buffer dirty on first edit.
-$marker = "# DELETE THIS LINE TO ACCEPT THE MESSAGE ABOVE, OR EDIT IT. Ctrl+Q TO ABORT."
-$content = if ($aiMessage) { "$aiMessage`n`n$marker" } else { $marker }
-Set-Content $tempFile $content -Encoding UTF8
+Set-Content $tempFile $aiMessage -Encoding UTF8
 
 if (Ensure-Micro) {
 	micro $tempFile
-	$result = (Get-Content $tempFile -Raw -Encoding UTF8).Trim()
-	# If marker is still there untouched, user quit without editing
-	if ($result -match [regex]::Escape($marker)) {
-		$result = ($result -replace [regex]::Escape($marker), '').Trim()
-	}
-	if (-not $result) {
-		Write-Host "Aborted." -ForegroundColor Red
-		Remove-Item $tempFile -ErrorAction SilentlyContinue
-		git reset HEAD 2>$null
-		exit 1
-	}
-	Set-Content $tempFile $result -Encoding UTF8
 } else {
 	# Fallback: show message and offer inline edit
 	Write-Host ""
