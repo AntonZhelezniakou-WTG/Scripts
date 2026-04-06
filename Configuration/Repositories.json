@@ -1,24 +1,17 @@
-﻿[
-    {
-        "value":  [
-                      {
-                          "value":  [
-                                        "@{value=System.Object[]; Count=2}",
-                                        "@{Path=C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Shared; Name=WiseTechGlobal/CargoWise.Shared; Remote=https://github.com/WiseTechGlobal/CargoWise.Shared}"
-                                    ],
-                          "Count":  2
-                      },
-                      {
-                          "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Database",
-                          "Name":  "WiseTechGlobal/CargoWise.Database",
-                          "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Database"
-                      }
-                  ],
-        "Count":  2
-    },
-    {
-        "Path":  "D:\\GitHub\\WiseTechGlobal\\CargoWise.Customs",
-        "Name":  "WiseTechGlobal/CargoWise.Customs",
-        "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Customs"
-    }
+[
+  {
+    "Path": "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Shared",
+    "Name": "WiseTechGlobal/CargoWise.Shared",
+    "Remote": "https://github.com/WiseTechGlobal/CargoWise.Shared"
+  },
+  {
+    "Path": "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Database",
+    "Name": "WiseTechGlobal/CargoWise.Database",
+    "Remote": "https://github.com/WiseTechGlobal/CargoWise.Database"
+  },
+  {
+    "Path": "D:\\GitHub\\WiseTechGlobal\\CargoWise.Customs",
+    "Name": "WiseTechGlobal/CargoWise.Customs",
+    "Remote": "https://github.com/WiseTechGlobal/CargoWise.Customs"
+  }
 ]

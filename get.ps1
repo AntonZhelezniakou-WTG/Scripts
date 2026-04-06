@@ -26,20 +26,22 @@ function Update-RepositoryConfig([string]$Root, [string]$Name, [string]$Remote) 
 
 	$repos = @()
 	if (Test-Path $configFile) {
-		$repos = @(Get-Content $configFile -Raw | ConvertFrom-Json)
+		$parsed = Get-Content $configFile -Raw | ConvertFrom-Json
+		$repos = @($parsed)
 	}
 
 	$repos = @($repos | Where-Object { $_.Path -ne $Root })
 	$repos += [PSCustomObject]@{ Path = $Root; Name = $Name; Remote = $Remote }
 
 	if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir | Out-Null }
-	$repos | ConvertTo-Json -Depth 3 | Set-Content $configFile -Encoding UTF8
+	ConvertTo-Json -InputObject @($repos) -Depth 2 | Set-Content $configFile -Encoding UTF8
 }
 
 function Get-RepositoryFromConfig([string]$Root) {
 	$configFile = Join-Path $PSScriptRoot "Configuration\Repositories.json"
 	if (-not (Test-Path $configFile)) { return $null }
-	$repos = @(Get-Content $configFile -Raw | ConvertFrom-Json)
+	$parsed = Get-Content $configFile -Raw | ConvertFrom-Json
+	$repos = @($parsed)
 	return $repos | Where-Object { $_.Path -eq $Root } | Select-Object -First 1
 }
 
