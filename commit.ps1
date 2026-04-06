@@ -109,6 +109,8 @@ $diff
 	}
 
 	$text = ($result -join "`n").Trim()
+	# Strip Co-authored-by trailers added by Copilot
+	$text = ($text -replace '(?m)^\s*Co-authored-by:.*$', '').Trim()
 	if ($text) { return $text }
 	return $null
 }
@@ -232,20 +234,34 @@ Write-Host "$($staged.Count) file(s) staged." -ForegroundColor Cyan
 $aiMessage = Get-AiCommitMessage
 if (-not $aiMessage) {
 	$aiMessage = ""
-	Write-Host "[info] AI unavailable (install claude CLI for auto-generation)." -ForegroundColor DarkGray
+	Write-Host "[info] AI unavailable (install copilot CLI for auto-generation)." -ForegroundColor DarkGray
 }
 
 # ── Phase 4: Edit commit message ────────────────────────────────────────────
 
 $tempFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.txt'
 
-# Write message to temp file (comment lines stripped after edit)
-$helpLine = "# Save (Ctrl+S) and close (Ctrl+Q) to commit. Empty message aborts."
-$fullContent = $aiMessage + "`n" + $helpLine
-Set-Content $tempFile $fullContent -Encoding UTF8
+# micro prompts "Save changes?" on Ctrl+Q if buffer is modified.
+# To ensure it always prompts (even when accepting AI message as-is),
+# we append a marker line that makes the buffer dirty on first edit.
+$marker = "# DELETE THIS LINE TO ACCEPT THE MESSAGE ABOVE, OR EDIT IT. Ctrl+Q TO ABORT."
+$content = if ($aiMessage) { "$aiMessage`n`n$marker" } else { $marker }
+Set-Content $tempFile $content -Encoding UTF8
 
 if (Ensure-Micro) {
 	micro $tempFile
+	$result = (Get-Content $tempFile -Raw -Encoding UTF8).Trim()
+	# If marker is still there untouched, user quit without editing
+	if ($result -match [regex]::Escape($marker)) {
+		$result = ($result -replace [regex]::Escape($marker), '').Trim()
+	}
+	if (-not $result) {
+		Write-Host "Aborted." -ForegroundColor Red
+		Remove-Item $tempFile -ErrorAction SilentlyContinue
+		git reset HEAD 2>$null
+		exit 1
+	}
+	Set-Content $tempFile $result -Encoding UTF8
 } else {
 	# Fallback: show message and offer inline edit
 	Write-Host ""
@@ -256,21 +272,20 @@ if (Ensure-Micro) {
 	$userInput = [Console]::ReadLine()
 	if ($userInput.Trim()) {
 		Set-Content $tempFile $userInput.Trim() -Encoding UTF8
-	} else {
-		Set-Content $tempFile $aiMessage -Encoding UTF8
+	} elseif (-not $aiMessage) {
+		Write-Host "No message entered. Aborted." -ForegroundColor Red
+		Remove-Item $tempFile -ErrorAction SilentlyContinue
+		git reset HEAD 2>$null
+		exit 1
 	}
 }
 
-# Read back and strip comment lines
-$commitMessage = (Get-Content $tempFile -Encoding UTF8 |
-	Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
-$commitMessage = $commitMessage.Trim()
+$commitMessage = (Get-Content $tempFile -Raw -Encoding UTF8).Trim()
 
 Remove-Item $tempFile -ErrorAction SilentlyContinue
 
 if (-not $commitMessage) {
 	Write-Host "Empty commit message. Aborted." -ForegroundColor Red
-	# Unstage everything we staged
 	git reset HEAD 2>$null
 	exit 1
 }
