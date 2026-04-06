@@ -66,14 +66,18 @@ function Build-FzfEntries($Parsed) {
 			default { "" }
 		}
 		$display = if ($_.OldPath) { "$($_.OldPath) -> $($_.Path)" } else { $_.Path }
-		"${color}$($_.Status)${reset}   $display"
+		# Tab-separated: visible part \t clean path (for preview)
+		"${color}$($_.Status)${reset}   $display`t$($_.Path)"
 	})
 }
 
 function Extract-PathFromFzfLine([string]$Line) {
+	# Path is in the second tab-delimited field
+	$parts = $Line -split "`t"
+	if ($parts.Count -ge 2) { return $parts[1].Trim() }
+	# Fallback: parse from visible part
 	$clean = $Line -replace '\e\[[0-9;]*m', ''
 	$path  = ($clean -split '\s+', 2)[1].Trim()
-	# Handle rename display: "old -> new" — take the new path
 	if ($path -match ' -> (.+)$') { return $Matches[1] }
 	return $path
 }
@@ -160,11 +164,15 @@ while ($true) {
 
 	$fzfArgs = @(
 		'--multi', '--ansi', '--sync'
-		'--style=minimal', '--height=60%', '--no-info', '--layout=reverse'
+		'--style=minimal', '--height=80%', '--no-info', '--layout=reverse'
 		'--pointer=>', '--gutter= ', '--marker=>'
 		'--color=pointer:green,fg+:green:bold,bg+:-1'
 		'--header=Space=toggle, Del=discard, Enter=confirm, Esc=cancel'
 		'--header-first'
+		"--delimiter=`t"
+		'--with-nth=1'
+		'--preview=git diff --cached --color=always -- {2}'
+		'--preview-window=right,60%,wrap'
 		'--bind=start:select-all+hide-input'
 		'--bind=space:toggle'
 		'--expect=del'
