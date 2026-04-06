@@ -1,1 +1,0 @@
-pwsh -NoProfile -ExecutionPolicy Bypass -File "c:\git\GitHub\WiseTechGlobal\Personal\Scripts\disable.ps1"
