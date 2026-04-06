@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 # Build owner list from Paths.json: defaultOwner first, then all ownerAliases
 $_cfg    = Get-PathsConfig
@@ -47,6 +47,8 @@ if ($headRef -and $headRef -match "refs/heads/(\S+)") {
 	$defaultBranch = $Matches[1]
 }
 
+$isEmptyRepo = $false
+
 if (-not $defaultBranch) {
 	# Fallback: check if master or main exists
 	$ErrorActionPreference = "Continue"
@@ -57,8 +59,10 @@ if (-not $defaultBranch) {
 	} elseif ($refs -match "refs/heads/main\b") {
 		$defaultBranch = "main"
 	} else {
-		Write-Host "Error: could not detect master or main branch on remote." -ForegroundColor Red
-		exit 1
+		# Empty repository — ask user to name the initial branch
+		$defaultBranch = Select-InitialBranch
+		if (-not $defaultBranch) { exit 0 }
+		$isEmptyRepo = $true
 	}
 }
 
@@ -69,14 +73,43 @@ if (-not $Directory) {
 	$Directory = ($Url -replace "\.git$", "" -split "[/:]")[-1]
 }
 
-# Clone with single-branch to fetch only the default branch
-git clone --single-branch --branch $defaultBranch $Url $Directory
-if ($LASTEXITCODE -ne 0) {
-	Write-Host "Error: clone failed." -ForegroundColor Red
-	exit 1
-}
+if ($isEmptyRepo) {
+	# Clone the empty repo (no --branch flag), then initialise the branch and push
+	git clone $Url $Directory
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "Error: clone failed." -ForegroundColor Red
+		exit 1
+	}
 
-Write-Host "Done. Cloned with only '$defaultBranch'." -ForegroundColor Green
+	$fullPath = (Resolve-Path $Directory).Path
+	Push-Location $fullPath
+	$ok = Initialize-EmptyRepoBranch $defaultBranch
+	Pop-Location
+
+	if (-not $ok) { exit 1 }
+} else {
+	# Ask user to confirm or rename the main branch
+	$chosenBranch = Select-MainBranchName -DetectedBranch $defaultBranch
+	if (-not $chosenBranch) { exit 0 }
+
+	# Clone with single-branch to fetch only the default branch
+	git clone --single-branch --branch $defaultBranch $Url $Directory
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "Error: clone failed." -ForegroundColor Red
+		exit 1
+	}
+
+	if ($chosenBranch -ne $defaultBranch) {
+		$fullPath = (Resolve-Path $Directory).Path
+		Push-Location $fullPath
+		$ok = Rename-DefaultBranch -OldBranch $defaultBranch -NewBranch $chosenBranch -RepoUrl $Url
+		Pop-Location
+		if (-not $ok) { exit 1 }
+		$defaultBranch = $chosenBranch
+	}
+
+	Write-Host "Done. Cloned with only '$defaultBranch'." -ForegroundColor Green
+}
 
 # Signal cmd wrapper to cd into the cloned directory
 $fullPath = (Resolve-Path $Directory).Path

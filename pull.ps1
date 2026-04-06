@@ -4,41 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
-
-# Returns $true if something was actually stashed
-function Invoke-Stash([string]$RepoPath, [string]$Label) {
-	$before = (git -C $RepoPath stash list 2>$null | Measure-Object).Count
-	$ErrorActionPreference = "Continue"
-	git -C $RepoPath stash push -m $Label 2>$null | Out-Host
-	$exit = $LASTEXITCODE
-	$ErrorActionPreference = "Stop"
-	if ($exit -ne 0) {
-		Write-Host "Stash failed." -ForegroundColor Red
-		Wait-AnyKey
-		exit 1
-	}
-	$after = (git -C $RepoPath stash list 2>$null | Measure-Object).Count
-	return [bool]($after -gt $before)
-}
-
-function Invoke-StashPop([string]$RepoPath) {
-	Write-Host "Restoring stashed changes..." -ForegroundColor Cyan
-
-	$stashRef = git -C $RepoPath stash list --max-count=1 --format="%gd" 2>$null
-
-	$ErrorActionPreference = "Continue"
-	git -C $RepoPath stash pop | Out-Host
-	$exit = $LASTEXITCODE
-	$ErrorActionPreference = "Stop"
-
-	if ($exit -ne 0) {
-		$conflictsScript = Join-Path $PSScriptRoot "conflicts.ps1"
-		Push-Location $RepoPath
-		& $conflictsScript -Mode stash -StashRef $stashRef
-		Pop-Location
-	}
-}
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 # Pulls $BranchName in $RepoPath; pass -NoFetch if fetch was done earlier
 # Returns exit code as [int]
@@ -121,7 +87,7 @@ $here = (Get-Location).Path
 $isMainTarget = $Target -eq "master" -or $Target -eq "main"
 
 if ($isMainTarget) {
-	$localBranches = git branch | ForEach-Object { $_.Trim() -replace "^[*+] ", "" }
+	$localBranches = Get-LocalBranches
 	$baseBranch    = $localBranches | Where-Object { $_ -eq $Target } | Select-Object -First 1
 	if (-not $baseBranch) {
 		Write-Host "Branch '$Target' not found locally." -ForegroundColor Red

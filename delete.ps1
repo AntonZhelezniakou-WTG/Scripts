@@ -4,13 +4,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 # Switch the repo (or worktree) to master/main before deleting current branch.
 function Switch-ToDefault {
-	$default = git branch --list master main |
-		ForEach-Object { $_.Trim() -replace "^[*+] ", "" } |
-		Select-Object -First 1
+	$default = Get-BaseBranch
 
 	if (-not $default) {
 		Write-Host "ERROR: Cannot find master or main branch to switch to." -ForegroundColor Red

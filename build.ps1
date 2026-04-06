@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 # MSBuild tool paths
 $msbuildPath = "C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin\MSBuild.exe"
@@ -179,6 +179,9 @@ function ConvertTo-RelEntry([string]$FilePath) {
 # Convert an absolute path to a repo-relative path for storage in the cache.
 # Always strips the main repo root so the same relative path works in any worktree.
 function ConvertTo-CacheRelPath([string]$AbsPath) {
+	if ($AbsPath.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+		return $AbsPath.Substring($repoRoot.Length).TrimStart('\')
+	}
 	if ($AbsPath.StartsWith($mainRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
 		return $AbsPath.Substring($mainRoot.Length).TrimStart('\')
 	}

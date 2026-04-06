@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 if ($WorkDir) { Set-Location $WorkDir }
 

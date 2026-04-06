@@ -1,5 +1,8 @@
 # Shared functions for git workflow scripts.
-# Usage: . (Join-Path $PSScriptRoot "common.ps1")
+# Usage: . (Join-Path $PSScriptRoot "Common\common.ps1")
+
+. (Join-Path $PSScriptRoot "Git.ps1")
+. (Join-Path $PSScriptRoot "Stash.ps1")
 
 # Pause until any key is pressed.
 function Wait-AnyKey {
@@ -220,6 +223,137 @@ function Remove-GitBranchConfig {
 	$ErrorActionPreference = "Stop"
 
 	Write-Host "[config] Cleaned git config for: $BranchName" -ForegroundColor DarkGray
+}
+
+# Prompt user to choose a name for the main branch via fzf.
+# Shows the detected remote name first. Returns branch name or $null if cancelled.
+function Select-MainBranchName {
+	param([string]$DetectedBranch)
+
+	if (-not (Ensure-Fzf)) { return $DetectedBranch }
+
+	$options = @($DetectedBranch)
+	$alt = if ($DetectedBranch -eq "master") { "main" } elseif ($DetectedBranch -eq "main") { "master" } else { $null }
+	if ($alt) { $options += $alt }
+	$options += "custom..."
+
+	$picked = $options | fzf `
+		--style=minimal --no-input --disabled --height=~5 --no-info --layout=reverse `
+		--pointer=">" --gutter=" " `
+		--color="pointer:green,fg+:green:bold,bg+:-1" `
+		--header="Main branch name (remote: $DetectedBranch):" `
+		--header-first
+
+	if (-not $picked) { return $null }
+
+	if ($picked -eq "custom...") {
+		Write-Host "Branch name: " -NoNewline -ForegroundColor Cyan
+		$branchName = ([Console]::ReadLine()).Trim()
+		if (-not $branchName) { return $null }
+		return $branchName
+	}
+
+	return $picked
+}
+
+# Rename the default branch locally and on the remote.
+# Must be called from within the repo directory.
+function Rename-DefaultBranch {
+	param(
+		[string]$OldBranch,
+		[string]$NewBranch,
+		[string]$RepoUrl
+	)
+
+	Write-Host "Renaming default branch: $OldBranch -> $NewBranch..." -ForegroundColor Cyan
+
+	# Rename local branch
+	git branch -m $OldBranch $NewBranch
+
+	# Push new branch to remote and set tracking
+	git push -u origin $NewBranch
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "Error: failed to push '$NewBranch' to remote." -ForegroundColor Red
+		return $false
+	}
+
+	# Change default branch on GitHub via API
+	$ghUpdated = $false
+	if ($RepoUrl -match 'github\.com[/:](.+?)(?:\.git)?$') {
+		$slug = $Matches[1]
+		$ErrorActionPreference = "Continue"
+		$null = gh api "repos/$slug" -X PATCH -f default_branch=$NewBranch 2>$null
+		$ghUpdated = ($LASTEXITCODE -eq 0)
+		$ErrorActionPreference = "Stop"
+	}
+
+	if ($ghUpdated) {
+		# Delete old remote branch
+		$ErrorActionPreference = "Continue"
+		git push origin --delete $OldBranch 2>$null
+		$ErrorActionPreference = "Stop"
+	} else {
+		Write-Host "Warning: could not update default branch on GitHub (gh CLI needed). Old branch '$OldBranch' retained on remote." -ForegroundColor Yellow
+	}
+
+	# Clean up old remote-tracking ref
+	$ErrorActionPreference = "Continue"
+	git update-ref -d "refs/remotes/origin/$OldBranch" 2>$null
+	$ErrorActionPreference = "Stop"
+
+	# Fix fetch refspec (--single-branch clone has exactly one)
+	git config remote.origin.fetch "+refs/heads/${NewBranch}:refs/remotes/origin/${NewBranch}"
+
+	# Update remote HEAD ref
+	git remote set-head origin $NewBranch
+
+	return $true
+}
+
+# Prompt user to pick an initial branch name for an empty repo via fzf.
+# Returns the branch name, or $null if cancelled.
+function Select-InitialBranch {
+	if (-not (Ensure-Fzf)) { return $null }
+
+	Write-Host "Repository is empty. Choose a name for the initial branch:" -ForegroundColor Yellow
+
+	$picked = @("master", "main", "custom...") | fzf `
+		--style=minimal --no-input --disabled --height=~5 --no-info --layout=reverse `
+		--pointer=">" --gutter=" " `
+		--color="pointer:green,fg+:green:bold,bg+:-1" `
+		--header="Select initial branch name:" `
+		--header-first
+
+	if (-not $picked) { return $null }
+
+	if ($picked -eq "custom...") {
+		Write-Host "Branch name: " -NoNewline -ForegroundColor Cyan
+		$branchName = ([Console]::ReadLine()).Trim()
+	} else {
+		$branchName = $picked
+	}
+
+	if (-not $branchName) { return $null }
+	return $branchName
+}
+
+# Initialize an empty repo: set HEAD to the chosen branch, create an initial commit, push.
+# Returns $true on success, $false on failure.
+function Initialize-EmptyRepoBranch {
+	param([string]$BranchName)
+
+	git symbolic-ref HEAD "refs/heads/$BranchName"
+	git commit --allow-empty -m "Initial commit"
+	git push -u origin $BranchName
+	$pushExit = $LASTEXITCODE
+
+	if ($pushExit -ne 0) {
+		Write-Host "Error: failed to push initial branch '$BranchName'." -ForegroundColor Red
+		return $false
+	}
+
+	Write-Host "Done. Created branch '$BranchName' and pushed initial commit." -ForegroundColor Green
+	return $true
 }
 
 # Check if fzf is installed; offer to install via winget if not.

@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 if ($WorkDir) { Set-Location $WorkDir }
 
@@ -28,8 +28,7 @@ if ($currentBranch -eq "master" -or $currentBranch -eq "main") {
 	exit 0
 }
 
-$localBranches = git branch | ForEach-Object { $_.Trim() -replace "^[*+] ", "" } | Where-Object { $_ -ne "" }
-$baseBranch    = $localBranches | Where-Object { $_ -eq "master" -or $_ -eq "main" } | Select-Object -First 1
+$baseBranch = Get-BaseBranch
 
 if (-not $baseBranch) {
 	Write-Host "Error: neither 'master' nor 'main' found locally." -ForegroundColor Red

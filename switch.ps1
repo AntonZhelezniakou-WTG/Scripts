@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 $UP   = [char]0x2191  # ↑
 $DOWN = [char]0x2193  # ↓
@@ -159,6 +159,30 @@ function Remove-Branch {
 	& $ddPs1 -WorkDir $WorkDir -Target $BranchName
 }
 
+function Find-SiblingRepo {
+	param([string]$Suffix)
+	$repoRoot = git rev-parse --show-toplevel 2>$null
+	if (-not $repoRoot) { return $null }
+	$repoName  = Split-Path $repoRoot -Leaf
+	$parentDir = Split-Path $repoRoot -Parent
+	$candidate = Get-ChildItem -Path $parentDir -Directory -ErrorAction SilentlyContinue |
+		Where-Object { $_.Name -ieq "$repoName.$Suffix" } |
+		Select-Object -First 1
+	if ($candidate) { return $candidate.FullName }
+	return $null
+}
+
+function Open-SiblingRepo {
+	param([string]$RepoPath, [string]$Label)
+	if ($env:WT_SESSION) {
+		wt --window 0 new-tab --title $Label --startingDirectory $RepoPath
+		Write-Host "Opened tab: $RepoPath" -ForegroundColor Cyan
+	} else {
+		Write-Host "Found: $RepoPath" -ForegroundColor Cyan
+		Write-Host "Run: cd `"$RepoPath`"" -ForegroundColor Cyan
+	}
+}
+
 if ($WorkDir) { Set-Location $WorkDir }
 
 # Validate git repository
@@ -169,14 +193,20 @@ if ($LASTEXITCODE -ne 0) {
 	exit 1
 }
 
+# Handle empty repo (no commits yet)
+$hasCommits = git rev-parse HEAD 2>$null
+if ($LASTEXITCODE -ne 0) {
+	$branchName = Select-InitialBranch
+	if (-not $branchName) { exit 0 }
+	$ok = Initialize-EmptyRepoBranch $branchName
+	if (-not $ok) { Wait-AnyKey; exit 1 }
+	exit 0
+}
+
 # If branch was passed as argument — handle it directly without menu
 if ($Branch) {
-	$worktreeBranches = git branch |
-		Where-Object { $_.TrimStart().StartsWith("+") } |
-		ForEach-Object { $_.Trim() -replace "^\+ ", "" }
-	$localBranches = git branch |
-		ForEach-Object { $_.Trim() -replace "^[*+] ", "" } |
-		Where-Object { $_ -ne "" }
+	$localBranches    = Get-LocalBranches
+	$worktreeBranches = Get-WorktreeBranches
 
 	$isLocal    = $localBranches -contains $Branch
 	$isWorktree = $worktreeBranches -contains $Branch
@@ -216,6 +246,11 @@ cmd /k
 
 	$remoteRef = git ls-remote --heads origin $Branch | Select-Object -First 1
 	if (-not $remoteRef) {
+		$sibling = Find-SiblingRepo $Branch
+		if ($sibling) {
+			Open-SiblingRepo -RepoPath $sibling -Label $Branch
+			exit 0
+		}
 		Write-Host "Error: branch '$Branch' not found on origin." -ForegroundColor Red
 		Wait-AnyKey
 		exit 1
@@ -278,15 +313,11 @@ changes
 if (-not (Ensure-Fzf)) { Wait-AnyKey; exit 1 }
 
 while ($true) {
-	$worktreeBranches = git branch |
-		Where-Object { $_.TrimStart().StartsWith("+") } |
-		ForEach-Object { $_.Trim() -replace "^\+ ", "" }
-	$localBranches = git branch |
-		ForEach-Object { $_.Trim() -replace "^[*+] ", "" } |
-		Where-Object { $_ -ne "" }
-	$wtSet         = $worktreeBranches
-	$currentBranch = git symbolic-ref --short HEAD 2>$null
-	$baseBranch    = $localBranches | Where-Object { $_ -eq "master" -or $_ -eq "main" } | Select-Object -First 1
+	$localBranches    = Get-LocalBranches
+	$worktreeBranches = Get-WorktreeBranches
+	$wtSet            = $worktreeBranches
+	$currentBranch    = git symbolic-ref --short HEAD 2>$null
+	$baseBranch       = Get-BaseBranch
 
 	$rawEntries = @()
 	if ($PSVersionTable.PSVersion.Major -ge 7) {
@@ -484,6 +515,11 @@ cmd /k
 	# Branch not local — check remote
 	$remoteRef = git ls-remote --heads origin $branchSelected | Select-Object -First 1
 	if (-not $remoteRef) {
+		$sibling = Find-SiblingRepo $branchSelected
+		if ($sibling) {
+			Open-SiblingRepo -RepoPath $sibling -Label $branchSelected
+			exit 0
+		}
 		Write-Host "Error: branch '$branchSelected' not found on origin." -ForegroundColor Red
 		Wait-AnyKey
 		continue

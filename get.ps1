@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 function Read-RepoJson([string]$MainPath) {
 	$file = Join-Path $MainPath ".repo.json"

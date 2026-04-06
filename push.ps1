@@ -3,7 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 if ($WorkDir) { Set-Location $WorkDir }
 
@@ -16,13 +16,6 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($branch -eq "HEAD") {
 	Write-Host "Detached HEAD state - no branch to push." -ForegroundColor Red
-	Wait-AnyKey
-	exit 1
-}
-
-# Block push to protected branches
-if ($branch -eq "main" -or $branch -eq "master") {
-	Write-Host "Push to '$branch' is not allowed." -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }

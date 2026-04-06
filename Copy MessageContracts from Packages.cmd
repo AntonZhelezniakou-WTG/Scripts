@@ -1,1 +1,0 @@
-call "%Repo_CargoWise%\Enterprise\Product\Operations\Customs\PL\.commands\Copy MessageContracts from Packages.cmd"
