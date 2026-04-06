@@ -342,4 +342,6 @@ Write-Host $key.KeyChar
 if ($key.KeyChar -match '^[Yy]$') {
 	$pushScript = Join-Path $PSScriptRoot "push.ps1"
 	& $pushScript
+} else {
+	Write-Host "Push skipped." -ForegroundColor DarkGray
 }
