@@ -3,6 +3,7 @@
 
 . (Join-Path $PSScriptRoot "Git.ps1")
 . (Join-Path $PSScriptRoot "Stash.ps1")
+. (Join-Path $PSScriptRoot "FzfTree.ps1")
 
 # Pause until any key is pressed.
 function Wait-AnyKey {
