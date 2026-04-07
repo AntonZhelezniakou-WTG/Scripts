@@ -65,7 +65,16 @@ if ([int]$behind -gt 0) {
 	}
 }
 
+# Pre-push review
+Write-Host ""
+$proceed = Invoke-PushReview -Remote $remote -Branch $branch
+if (-not $proceed) {
+	Write-Host "Push cancelled." -ForegroundColor Yellow
+	exit 0
+}
+
 # Push
+Write-Host ""
 Write-Host "Pushing to $remote/$branch..." -ForegroundColor Cyan
 $ErrorActionPreference = "Continue"
 git push $remote $branch

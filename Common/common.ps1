@@ -404,6 +404,88 @@ function Get-CopyGitHubLine {
 	return ""
 }
 
+# Interactive pre-push review. Shows commits ahead of remote as a two-level fzf menu.
+# Level 1 — commit list: Enter=inspect files, Ctrl+Enter=push, Esc=cancel.
+# Level 2 — file list for a commit: preview shows file diff, Esc=back to commit list.
+# Returns $true if user confirmed push (Ctrl+Enter), $false to cancel.
+function Invoke-PushReview {
+	param([string]$Remote, [string]$Branch)
+
+	$esc   = [char]27
+	$reset = "$esc[0m"
+
+	while ($true) {
+		$commits = @(git log --format="%H %s" "${Remote}/${Branch}..HEAD" 2>$null)
+
+		if ($commits.Count -eq 0) {
+			Write-Host "Nothing to push." -ForegroundColor Yellow
+			return $false
+		}
+
+		# Build tab-separated entries: visible subject | hidden hash
+		$entries = $commits | ForEach-Object {
+			$hash    = $_.Substring(0, 40)
+			$subject = if ($_.Length -gt 41) { $_.Substring(41) } else { "" }
+			"$subject`t$hash"
+		}
+
+		$lines = $entries | fzf `
+			--style=minimal --no-input --disabled --height=60% --no-info --layout=reverse `
+			--ansi `
+			'--header=Enter=inspect files  Ctrl+Enter=push  Esc=cancel' `
+			--header-first `
+			'--pointer=>' '--gutter= ' `
+			'--color=pointer:green,fg+:green:bold,bg+:-1' `
+			"--delimiter=`t" `
+			'--with-nth=1' `
+			'--preview=git show --stat --color=always {2}' `
+			'--preview-window=right,60%,wrap' `
+			'--expect=ctrl-j'
+
+		if (-not $lines) { return $false }
+
+		$keyUsed  = $lines[0].Trim()
+		$selected = if ($lines.Count -gt 1) { $lines[1] } else { $null }
+
+		if ($keyUsed -eq 'ctrl-j') { return $true }
+		if (-not $selected)        { return $false }
+
+		# Enter — drill into changed files for this commit
+		$parts   = $selected -split "`t", 2
+		$subject = $parts[0].Trim()
+		$hash    = if ($parts.Count -ge 2) { $parts[1].Trim() } else { $null }
+		if (-not $hash) { continue }
+
+		$fileLines = @(git diff-tree --no-commit-id -r --name-status $hash 2>$null)
+		if (-not $fileLines) { continue }
+
+		$fileEntries = $fileLines | ForEach-Object {
+			if ($_ -match '^([MADRCT])\s+(.+)$') {
+				$st   = $Matches[1]
+				$path = $Matches[2]
+				$col  = switch ($st) {
+					'M' { "$esc[33m" } 'A' { "$esc[32m" } 'D' { "$esc[31m" } default { "" }
+				}
+				"${col}${st}${reset}   ${path}`t${path}"
+			}
+		} | Where-Object { $_ }
+
+		$null = $fileEntries | fzf `
+			--style=minimal --no-input --disabled --height=60% --no-info --layout=reverse `
+			--ansi `
+			"--header=$subject  (Esc=back)" `
+			--header-first `
+			'--pointer=>' '--gutter= ' `
+			'--color=pointer:green,fg+:green:bold,bg+:-1' `
+			"--delimiter=`t" `
+			'--with-nth=1' `
+			"--preview=git show --color=always $hash -- {2}" `
+			'--preview-window=right,60%,wrap'
+
+		# Loop back to commit list
+	}
+}
+
 # Build upd.cmd call for tab scripts. Returns empty string if not found.
 function Get-UpdCall {
 	param([string]$WtRoot)

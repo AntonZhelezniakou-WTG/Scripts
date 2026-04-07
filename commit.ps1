@@ -336,14 +336,25 @@ Write-Host "Committed." -ForegroundColor Green
 
 # ── Phase 6: Offer push ────────────────────────────────────────────────────
 
-Write-Host ""
-Write-Host "Push? [y/N] " -ForegroundColor Cyan -NoNewline
-$key = [Console]::ReadKey($true)
-Write-Host $key.KeyChar
+$pushBranch = git rev-parse --abbrev-ref HEAD 2>$null
+$pushRemote = if ($pushBranch) { git config --get "branch.$pushBranch.remote" 2>$null } else { $null }
 
-if ($key.KeyChar -match '^[Yy]$') {
-	$pushScript = Join-Path $PSScriptRoot "push.ps1"
-	& $pushScript
-} else {
-	Write-Host "Push skipped." -ForegroundColor DarkGray
+if ($pushRemote) {
+	Write-Host ""
+	$proceed = Invoke-PushReview -Remote $pushRemote -Branch $pushBranch
+	if ($proceed) {
+		Write-Host ""
+		Write-Host "Pushing to $pushRemote/$pushBranch..." -ForegroundColor Cyan
+		$ErrorActionPreference = "Continue"
+		git push $pushRemote $pushBranch
+		$pushExit = $LASTEXITCODE
+		$ErrorActionPreference = "Stop"
+		if ($pushExit -ne 0) {
+			Write-Host "Push failed." -ForegroundColor Red
+		} else {
+			Write-Host "Pushed." -ForegroundColor Green
+		}
+	} else {
+		Write-Host "Push skipped." -ForegroundColor DarkGray
+	}
 }
