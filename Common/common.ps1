@@ -37,7 +37,7 @@ function Get-RepoRoot {
 
 # Load Paths.json config. Returns defaults if file is missing.
 function Get-PathsConfig {
-	$configPath = Join-Path $PSScriptRoot "Configuration\Paths.json"
+	$configPath = Join-Path $PSScriptRoot "..\Configuration\Paths.json"
 	if (Test-Path $configPath) {
 		return Get-Content $configPath -Raw | ConvertFrom-Json
 	}
@@ -56,7 +56,7 @@ function Get-PathsConfig {
 function Get-CachedRemoteRepos {
 	param([string]$Owner, [switch]$ForceRefresh)
 
-	$cachePath = Join-Path $PSScriptRoot "Configuration\RepoCache.json"
+	$cachePath = Join-Path $PSScriptRoot "..\Configuration\RepoCache.json"
 	$cache = @{}
 	if (Test-Path $cachePath) {
 		try { $cache = Get-Content $cachePath -Raw | ConvertFrom-Json -AsHashtable } catch {}
@@ -81,7 +81,7 @@ function Get-CachedRemoteRepos {
 
 	$cache[$Owner] = @{ cachedAt = (Get-Date -Format 'o'); repos = $repos }
 
-	$configDir = Join-Path $PSScriptRoot "Configuration"
+	$configDir = Join-Path $PSScriptRoot "..\Configuration"
 	if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
 	$cache | ConvertTo-Json -Depth 3 | Set-Content $cachePath -Encoding UTF8
 
@@ -119,7 +119,7 @@ function Get-WtPath {
 	$ErrorActionPreference = "Continue"
 	$remoteUrl = git remote get-url origin 2>$null
 	$ErrorActionPreference = "Stop"
-	$fullName = if ($remoteUrl -match 'github\.com[/:](.+?)(?:\.git)?$') { $Matches[1] } else { $repoName }
+	$fullName = if ($remoteUrl -match 'github\.com[/:](.+?)(?:\.git)?\s*$') { $Matches[1].Trim() } else { $repoName }
 
 	# Check worktree aliases for folder name override and short-name flag
 	$wtFolder  = $repoName
