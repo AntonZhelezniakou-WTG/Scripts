@@ -49,9 +49,17 @@ $alreadyExistsCI = $remoteRefs | Where-Object {
 if ($alreadyExistsCI) {
 	$existingName = if ($alreadyExistsCI -match 'refs/heads/(.+)$') { $Matches[1] } else { $BranchName }
 	Write-Host ""
-	Write-Host "Error: branch '$existingName' already exists on remote." -ForegroundColor Red
-	Wait-AnyKey
-	exit 1
+	Write-Host "Branch '$existingName' already exists on remote." -ForegroundColor Yellow
+	Write-Host ""
+	Write-Host "Switch to it instead? [Y/n] " -ForegroundColor Cyan -NoNewline
+	$key = [Console]::ReadKey($true)
+	Write-Host $key.KeyChar
+	if ($key.KeyChar -match '^[Yy]$' -or $key.Key -eq 'Enter') {
+		$switchPs1 = Join-Path $PSScriptRoot "switch.ps1"
+		& $switchPs1 -WorkDir $WorkDir -Branch $existingName
+		exit $LASTEXITCODE
+	}
+	exit 0
 }
 
 # --- Choose: worktree or local branch ---
@@ -75,6 +83,33 @@ if ($useWorktree) {
 		New-Item -ItemType Directory -Path $wt.WtRoot | Out-Null
 	}
 
+	$updCall    = Get-UpdCall $wt.WtRoot
+	$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
+
+	if ($env:WT_SESSION) {
+		$safeLabel = $BranchName -replace "/", "_"
+		$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+		$wtPathStr = $wt.WtPath
+		$repoRoot  = $wt.RepoRoot
+		$updLine   = if ($updCall) { $updCall } else { "echo [info] No upd.cmd found for this repo, skipping." }
+		@"
+@echo off
+cd /d "$repoRoot"
+git worktree add -b "$BranchName" "$wtPathStr"
+if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
+$copyGhLine
+cd /d "$wtPathStr"
+$updLine
+choice /C YN /M "Push '$BranchName' to origin?"
+if errorlevel 2 goto :skip_push
+git push -u origin "$BranchName"
+:skip_push
+"@ | Set-Content $tabScript -Encoding ASCII
+		wt --window 0 new-tab --title $BranchName --startingDirectory $repoRoot cmd /k $tabScript
+		Write-Host "Opened WT tab for new worktree: $BranchName" -ForegroundColor Cyan
+		exit 0
+	}
+
 	Write-Host ""
 	Write-Host "== Creating worktree at '$($wt.WtPath)' ==" -ForegroundColor Cyan
 	git worktree add -b $BranchName $wt.WtPath
@@ -86,7 +121,6 @@ if ($useWorktree) {
 
 	Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
 
-	$updCall = Get-UpdCall $wt.WtRoot
 	if ($updCall) {
 		Write-Host "Running upd.cmd..." -ForegroundColor DarkGray
 		Push-Location $wt.WtPath
