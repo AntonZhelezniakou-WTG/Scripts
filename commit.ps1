@@ -36,51 +36,6 @@ function Ensure-Micro {
 	return $false
 }
 
-function Parse-StatusLines([string[]]$Lines) {
-	$result = @()
-	foreach ($line in $Lines) {
-		if ($line -match '^([MADRCT])\d*\t(.+?)(?:\t(.+))?$') {
-			$status  = $Matches[1]
-			$oldPath = $Matches[2]
-			$newPath = $Matches[3]
-			$result += [PSCustomObject]@{
-				Status  = $status
-				Path    = if ($newPath) { $newPath } else { $oldPath }
-				OldPath = if ($newPath) { $oldPath } else { $null }
-			}
-		}
-	}
-	return $result | Sort-Object Path
-}
-
-function Build-FzfEntries($Parsed) {
-	$esc   = [char]27
-	$reset = "$esc[0m"
-	return @($Parsed | ForEach-Object {
-		$color = switch ($_.Status) {
-			'M' { "$esc[33m" }   # yellow
-			'A' { "$esc[32m" }   # green
-			'D' { "$esc[31m" }   # red
-			'R' { "$esc[36m" }   # cyan
-			'C' { "$esc[36m" }   # cyan
-			default { "" }
-		}
-		$display = if ($_.OldPath) { "$($_.OldPath) -> $($_.Path)" } else { $_.Path }
-		# Tab-separated: visible part \t clean path (for preview)
-		"${color}$($_.Status)${reset}   $display`t$($_.Path)"
-	})
-}
-
-function Extract-PathFromFzfLine([string]$Line) {
-	# Path is in the second tab-delimited field
-	$parts = $Line -split "`t"
-	if ($parts.Count -ge 2) { return $parts[1].Trim() }
-	# Fallback: parse from visible part
-	$clean = $Line -replace '\e\[[0-9;]*m', ''
-	$path  = ($clean -split '\s+', 2)[1].Trim()
-	if ($path -match ' -> (.+)$') { return $Matches[1] }
-	return $path
-}
 
 function Get-AiCommitMessage {
 	if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) { return $null }

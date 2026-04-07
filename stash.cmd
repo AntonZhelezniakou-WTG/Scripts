@@ -7,5 +7,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0stash.ps1" "%CD%"
+pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0stash.ps1" "%CD%" "%~1"
 exit /b %ERRORLEVEL%
