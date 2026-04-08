@@ -212,28 +212,27 @@ if ($Branch) {
 	$isWorktree = $worktreeBranches -contains $Branch
 
 	if ($isWorktree) {
-		$wt = Get-WtPath $Branch
+		$wtPath = Get-ExistingWtPath $Branch
 		if ($env:WT_SESSION) {
 			$safeLabel = $Branch -replace "/", "_"
 			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
-			$wtPathStr = $wt.WtPath
 			@"
 @echo off
-cd /d "$wtPathStr"
+cd /d "$wtPath"
 git fetch origin "${Branch}:refs/remotes/origin/${Branch}"
 echo.
 echo == Worktree: $Branch ==
 echo.
 cmd /k
 "@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $Branch --startingDirectory $wt.WtPath cmd /k $tabScript
+			wt --window 0 new-tab --title $Branch --startingDirectory $wtPath cmd /k $tabScript
 			Write-Host "Opened WT tab for worktree: $Branch" -ForegroundColor Cyan
 		} else {
 			Ensure-FetchRefspec $Branch
 			Fetch-Branch $Branch
 			Write-Host ""
-			Write-Host "  Worktree path: $($wt.WtPath)" -ForegroundColor Cyan
-			Write-Host "  Run: cd `"$($wt.WtPath)`"" -ForegroundColor Cyan
+			Write-Host "  Worktree path: $wtPath" -ForegroundColor Cyan
+			Write-Host "  Run: cd `"$wtPath`"" -ForegroundColor Cyan
 			Write-Host ""
 		}
 		exit 0
@@ -470,28 +469,27 @@ while ($true) {
 	$isWorktree = $worktreeBranches -contains $branchSelected
 
 	if ($isWorktree) {
-		$wt = Get-WtPath $branchSelected
+		$wtPath = Get-ExistingWtPath $branchSelected
 		if ($env:WT_SESSION) {
 			$safeLabel = $branchSelected -replace "/", "_"
 			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
-			$wtPathStr = $wt.WtPath
 			@"
 @echo off
-cd /d "$wtPathStr"
+cd /d "$wtPath"
 git fetch origin "${branchSelected}:refs/remotes/origin/${branchSelected}"
 echo.
 echo == Worktree: $branchSelected ==
 echo.
 cmd /k
 "@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $branchSelected --startingDirectory $wt.WtPath cmd /k $tabScript
+			wt --window 0 new-tab --title $branchSelected --startingDirectory $wtPath cmd /k $tabScript
 			Write-Host "Opened WT tab for worktree: $branchSelected" -ForegroundColor Cyan
 		} else {
 			Ensure-FetchRefspec $branchSelected
 			Fetch-Branch $branchSelected
 			Write-Host ""
-			Write-Host "  Worktree path: $($wt.WtPath)" -ForegroundColor Cyan
-			Write-Host "  Run: cd `"$($wt.WtPath)`"" -ForegroundColor Cyan
+			Write-Host "  Worktree path: $wtPath" -ForegroundColor Cyan
+			Write-Host "  Run: cd `"$wtPath`"" -ForegroundColor Cyan
 			Write-Host ""
 		}
 		exit 0

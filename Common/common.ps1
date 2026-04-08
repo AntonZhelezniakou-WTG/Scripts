@@ -142,6 +142,25 @@ function Get-WtPath {
 	}
 }
 
+# Resolve the actual on-disk path of an existing worktree by branch name.
+# Uses `git worktree list` output, so it's immune to folder-name truncation bugs.
+# Returns $null if the branch is not checked out in any worktree.
+function Get-ExistingWtPath {
+	param([string]$BranchName)
+	$lines = git worktree list --porcelain 2>$null
+	$currentPath = $null
+	foreach ($line in $lines) {
+		if ($line -match '^worktree\s+(.+)$') {
+			$currentPath = $Matches[1].Trim()
+		} elseif ($line -match '^branch\s+refs/heads/(.+)$') {
+			if ($Matches[1].Trim() -eq $BranchName) {
+				return $currentPath
+			}
+		}
+	}
+	return $null
+}
+
 # Find the main worktree path (where .git is a directory, not a file).
 # Falls back to git worktree list, which handles both old (.{repo}.wt) and
 # new (D:\wt\{folder}) worktree locations.
@@ -477,5 +496,217 @@ function Invoke-PushReview {
 			'--preview-window=right,60%,wrap'
 
 		# Loop back to commit list
+	}
+}
+
+# Read the current working directory of a process via PEB (Windows, 64-bit host).
+# Returns the CWD string or $null on failure.
+# Loaded once per session via Add-Type.
+function Initialize-ProcessCwdType {
+	if (([System.Management.Automation.PSTypeName]'ProcessCwd').Type) { return }
+	Add-Type -ErrorAction SilentlyContinue -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class ProcessCwd {
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool   CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll")] static extern bool   ReadProcessMemory(IntPtr hProcess, IntPtr addr, byte[] buf, IntPtr size, out IntPtr read);
+    [DllImport("ntdll.dll")]    static extern int    NtQueryInformationProcess(IntPtr hProcess, int cls, ref PBI pbi, int len, out int rlen);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PBI { public IntPtr r0, PebBase, r2, r3, Pid, r5; }
+
+    const uint QUERY = 0x0400, VMREAD = 0x0010;
+
+    static IntPtr ReadPtr(byte[] b, int o) =>
+        IntPtr.Size == 8 ? new IntPtr(BitConverter.ToInt64(b, o))
+                         : new IntPtr(BitConverter.ToInt32(b, o));
+
+    public static string Get(int pid) {
+        IntPtr h = OpenProcess(QUERY | VMREAD, false, (uint)pid);
+        if (h == IntPtr.Zero) return null;
+        try {
+            var pbi = new PBI(); int rl;
+            if (NtQueryInformationProcess(h, 0, ref pbi, Marshal.SizeOf(pbi), out rl) != 0) return null;
+
+            // PEB: ProcessParameters pointer at 0x20 (64-bit) / 0x10 (32-bit)
+            int ppOff = IntPtr.Size == 8 ? 0x20 : 0x10;
+            byte[] peb = new byte[ppOff + IntPtr.Size]; IntPtr rd;
+            if (!ReadProcessMemory(h, pbi.PebBase, peb, new IntPtr(peb.Length), out rd)) return null;
+            IntPtr pp = ReadPtr(peb, ppOff);
+
+            // RTL_USER_PROCESS_PARAMETERS: CurrentDirectory.DosPath (UNICODE_STRING) at 0x38 (64-bit) / 0x24 (32-bit)
+            int cwdOff  = IntPtr.Size == 8 ? 0x38 : 0x24;
+            int ustrSz  = IntPtr.Size == 8 ? 16   : 8;
+            byte[] ppb  = new byte[cwdOff + ustrSz];
+            if (!ReadProcessMemory(h, pp, ppb, new IntPtr(ppb.Length), out rd)) return null;
+
+            ushort slen = BitConverter.ToUInt16(ppb, cwdOff);
+            IntPtr sbuf = ReadPtr(ppb, cwdOff + (IntPtr.Size == 8 ? 8 : 4));
+            if (slen == 0 || sbuf == IntPtr.Zero) return null;
+
+            byte[] sb = new byte[slen];
+            if (!ReadProcessMemory(h, sbuf, sb, new IntPtr(slen), out rd)) return null;
+            return Encoding.Unicode.GetString(sb).TrimEnd('\\', '\0', '/');
+        } catch { return null; }
+        finally { CloseHandle(h); }
+    }
+}
+'@
+}
+
+# Find processes that hold open handles on files inside $FolderPath.
+# Tries handle.exe (Sysinternals) first; otherwise detects via CWD (PEB) and command-line/exe matching.
+function Get-BlockingProcesses {
+	param([string]$FolderPath)
+
+	$norm = $FolderPath.TrimEnd('\', '/', ' ').Replace('/', '\')
+
+	# --- handle.exe (Sysinternals) ---
+	$handleExe = $null
+	$candidates = @(
+		(Get-Command "handle.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
+		"C:\Program Files\Sysinternals\handle.exe",
+		"C:\tools\sysinternals\handle.exe",
+		"$env:USERPROFILE\AppData\Local\Sysinternals\handle.exe"
+	) | Where-Object { $_ }
+	foreach ($c in $candidates) {
+		if (Test-Path $c -ErrorAction SilentlyContinue) { $handleExe = $c; break }
+	}
+
+	if ($handleExe) {
+		$raw  = & $handleExe -accepteula -nobanner $norm 2>$null
+		$seen = @{}; $results = @()
+		foreach ($line in $raw) {
+			if ($line -match '^(.+?)\s+pid:\s*(\d+)\s+type:\S+\s+\w+:\s+(.+)$') {
+				$pid_ = [int]$Matches[2]
+				if (-not $seen.ContainsKey($pid_)) {
+					$seen[$pid_] = $true
+					$results += [PSCustomObject]@{ PID = $pid_; Name = $Matches[1].Trim(); Detail = $Matches[3].Trim() }
+				} else {
+					($results | Where-Object { $_.PID -eq $pid_ } | Select-Object -First 1).Detail += "; $($Matches[3].Trim())"
+				}
+			}
+		}
+		return $results
+	}
+
+	# --- Fallback: CWD via PEB + command-line/exe matching via CIM ---
+	Initialize-ProcessCwdType
+
+	$results = @{}  # keyed by PID to deduplicate
+
+	# CWD check (catches cmd/pwsh/explorer windows sitting in the directory)
+	foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
+		try {
+			$cwd = [ProcessCwd]::Get($p.Id)
+			if ($cwd -and ($cwd -ieq $norm -or $cwd.StartsWith($norm + '\', [System.StringComparison]::OrdinalIgnoreCase))) {
+				if (-not $results.ContainsKey($p.Id)) {
+					$results[$p.Id] = [PSCustomObject]@{ PID = $p.Id; Name = $p.Name; Detail = "cwd: $cwd" }
+				}
+			}
+		} catch {}
+	}
+
+	# Command-line / exe path check (catches IDE processes, build tools, etc.)
+	Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object {
+		$cmd = $_.CommandLine; $exe = $_.ExecutablePath
+		if (($cmd -and $cmd -like "*$norm*") -or ($exe -and $exe -like "*$norm*")) {
+			if (-not $results.ContainsKey([int]$_.ProcessId)) {
+				$results[[int]$_.ProcessId] = [PSCustomObject]@{
+					PID    = [int]$_.ProcessId
+					Name   = $_.Name
+					Detail = if ($cmd) { $cmd } else { $exe }
+				}
+			}
+		}
+	}
+
+	return @($results.Values)
+}
+
+# Show an interactive fzf menu when a worktree folder cannot be removed.
+# Del=kill selected process, Ctrl+R=refresh list, Ctrl+Enter (ctrl-j)=retry removal.
+# Auto-retries removal when the list becomes empty.
+# Returns $true if the folder was successfully removed, $false if the user cancelled.
+function Invoke-BlockingProcessMenu {
+	param([string]$FolderPath)
+
+	function TryRemoveFolder ([string]$Path) {
+		try {
+			Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+			return $true
+		} catch {
+			return $false
+		}
+	}
+
+	while ($true) {
+		$procs = Get-BlockingProcesses -FolderPath $FolderPath
+
+		if ($procs.Count -eq 0) {
+			# No processes detected — try removal; if still locked, ask via fzf
+			if (TryRemoveFolder $FolderPath) { return $true }
+
+			$choice = @("Retry removal", "Cancel") | fzf `
+				--style=minimal --no-input --disabled --height=~5 --no-info --layout=reverse `
+				--pointer=">" --gutter=" " `
+				--color="pointer:red,fg+:red:bold,bg+:-1" `
+				--header="Cannot remove: $FolderPath  (no blocking processes detected)" `
+				--header-first
+
+			if ($choice -ne "Retry removal") { return $false }
+			continue
+		}
+
+		$maxNameLen = ($procs | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum
+
+		$entries = $procs | ForEach-Object {
+			$pidStr  = $_.PID.ToString().PadLeft(6)
+			$nameStr = $_.Name.PadRight($maxNameLen)
+			$detail  = if ($_.Detail.Length -gt 70) { $_.Detail.Substring(0, 67) + "..." } else { $_.Detail }
+			"[$pidStr]  $nameStr  $detail"
+		}
+
+		$lines = $entries | fzf `
+			--style=minimal --no-input --disabled --height=40% --no-info --layout=reverse `
+			--pointer=">" --gutter=" " `
+			--color="pointer:red,fg+:red:bold,bg+:-1" `
+			--header="Cannot remove: $FolderPath  |  Del=kill  Ctrl+R=refresh  Ctrl+Enter=retry  Esc=cancel" `
+			--header-first `
+			--expect="del,ctrl-r,ctrl-j"
+
+		if (-not $lines) { return $false }  # Esc / no selection
+
+		$keyUsed  = $lines[0].Trim()
+		$selected = if ($lines.Count -gt 1) { $lines[1].Trim() } else { "" }
+
+		if ($keyUsed -eq "ctrl-r") { continue }
+
+		if ($keyUsed -eq "ctrl-j") {
+			if (TryRemoveFolder $FolderPath) { return $true }
+			continue
+		}
+
+		if ($keyUsed -eq "del" -and $selected -match '^\[\s*(\d+)\]') {
+			$pid_ = [int]$Matches[1]
+			$proc = $procs | Where-Object { $_.PID -eq $pid_ } | Select-Object -First 1
+			if ($proc) {
+				Write-Host "Killing [$pid_] $($proc.Name)..." -ForegroundColor Yellow
+				try {
+					Stop-Process -Id $pid_ -Force -ErrorAction Stop
+					Write-Host "Process killed." -ForegroundColor Green
+				} catch {
+					Write-Host "Failed to kill: $_" -ForegroundColor Red
+					Start-Sleep -Milliseconds 800
+				}
+				Start-Sleep -Milliseconds 400
+				# Auto-retry if no blockers remain
+				$remaining = Get-BlockingProcesses -FolderPath $FolderPath
+				if ($remaining.Count -eq 0 -and (TryRemoveFolder $FolderPath)) { return $true }
+			}
+		}
 	}
 }

@@ -174,17 +174,37 @@ Write-Host ""
 
 # Step 1: Remove worktree
 if ($isWorktree) {
-	$ErrorActionPreference = "Continue"
 	if (Test-Path $worktreePath) {
 		Write-Host "== Removing worktree at '$worktreePath' =="
-		git worktree remove --force $worktreePath
+
+		# Delete the folder directly — avoids git worktree remove hanging on locked paths.
+		# Git registration is cleaned up via 'git worktree prune' after the folder is gone.
+		$folderRemoved = $false
+		try {
+			Remove-Item -LiteralPath $worktreePath -Recurse -Force -ErrorAction Stop
+			$folderRemoved = $true
+		} catch {
+			# Folder locked — show interactive process-kill menu
+			$folderRemoved = Invoke-BlockingProcessMenu -FolderPath $worktreePath
+			if (-not $folderRemoved) {
+				Write-Host "Aborted: worktree folder was not removed." -ForegroundColor Yellow
+				Write-Host "Branch deletion cancelled." -ForegroundColor Yellow
+				exit 0
+			}
+		}
+
+		$ErrorActionPreference = "Continue"
+		git worktree prune 2>$null
+		$ErrorActionPreference = "Stop"
+
 		Write-Host "Worktree removed." -ForegroundColor Green
 	} else {
 		Write-Host "== Pruning stale worktree registration for '$worktreePath' =="
+		$ErrorActionPreference = "Continue"
 		git worktree prune
+		$ErrorActionPreference = "Stop"
 		Write-Host "Worktree registration pruned." -ForegroundColor Green
 	}
-	$ErrorActionPreference = "Stop"
 }
 
 # Step 2: Remove local branch
