@@ -479,13 +479,3 @@ function Invoke-PushReview {
 		# Loop back to commit list
 	}
 }
-
-# Build upd.cmd call for tab scripts. Returns empty string if not found.
-function Get-UpdCall {
-	param([string]$WtRoot)
-	$updCmd = Join-Path $WtRoot "upd.cmd"
-	if (Test-Path $updCmd) {
-		return "call `"$updCmd`" full"
-	}
-	return ""
-}

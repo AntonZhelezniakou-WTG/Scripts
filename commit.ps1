@@ -302,6 +302,7 @@ $ErrorActionPreference = "Stop"
 if (-not $pushRemote) { $pushRemote = "origin" }
 
 Write-Host ""
+$Host.UI.RawUI.FlushInputBuffer()
 Write-Host "Push? [y/N] " -ForegroundColor Cyan -NoNewline
 $pushKey = [Console]::ReadKey($true)
 Write-Host $pushKey.KeyChar

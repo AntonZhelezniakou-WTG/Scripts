@@ -8,5 +8,8 @@
   ],
   "antonzhelezniakou-wtg": [
     "Diff-builder"
+  ],
+  "alias:personal": [
+    "WiseTechGlobal\\Personal\\Scripts"
   ]
 }

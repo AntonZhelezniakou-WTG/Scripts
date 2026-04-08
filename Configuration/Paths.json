@@ -4,12 +4,14 @@
 	"defaultOwner": "WiseTechGlobal",
 	"ownerAliases": [
 		{
+			"localPath": "C:\\git\\GitHub\\WiseTechGlobal\\Personal",
 			"githubOwner": "AntonZhelezniakou-WTG",
-			"localPath": "C:\\git\\GitHub\\WiseTechGlobal\\Personal"
+			"alias": "Personal"
 		},
 		{
+			"localPath": "C:\\git\\GitHub\\Personal",
 			"githubOwner": "ZelAnton",
-			"localPath": "C:\\git\\GitHub\\Personal"
+			"alias": "Personal"
 		}
 	],
 	"worktreeAliases": [
@@ -22,7 +24,7 @@
 	"wtExtraFolders": [
 		{
 			"repo": "WiseTechGlobal/CargoWise",
-			"folders": [ ".config", ".idea" ]
+			"folders": [ ".config", ".paket", "packages", "paket-files" ]
 		}
 	]
 }

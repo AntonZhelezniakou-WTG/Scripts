@@ -83,7 +83,6 @@ if ($useWorktree) {
 		New-Item -ItemType Directory -Path $wt.WtRoot | Out-Null
 	}
 
-	$updCall    = Get-UpdCall $wt.WtRoot
 	$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
 
 	if ($env:WT_SESSION) {
@@ -91,7 +90,6 @@ if ($useWorktree) {
 		$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
 		$wtPathStr = $wt.WtPath
 		$repoRoot  = $wt.RepoRoot
-		$updLine   = if ($updCall) { $updCall } else { "echo [info] No upd.cmd found for this repo, skipping." }
 		@"
 @echo off
 cd /d "$repoRoot"
@@ -99,7 +97,6 @@ git worktree add -b "$BranchName" "$wtPathStr"
 if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
 $copyGhLine
 cd /d "$wtPathStr"
-$updLine
 choice /C YN /M "Push '$BranchName' to origin?"
 if errorlevel 2 goto :skip_push
 git push -u origin "$BranchName"
@@ -120,13 +117,6 @@ git push -u origin "$BranchName"
 	}
 
 	Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
-
-	if ($updCall) {
-		Write-Host "Running upd.cmd..." -ForegroundColor DarkGray
-		Push-Location $wt.WtPath
-		& cmd /c $updCall
-		Pop-Location
-	}
 
 	Write-Host "Worktree created: $($wt.WtPath)" -ForegroundColor Green
 } else {

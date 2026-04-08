@@ -146,17 +146,90 @@ function Get-LocalRepos([string]$RepoBase) {
 }
 
 # ---------------------------------------------------------
-# No-param mode: interactive repo selector
+# Folder-alias repo scan
 # ---------------------------------------------------------
-if (-not $Param1) {
+function Get-FolderAliasRepos([string]$AliasName) {
+	$config     = Get-PathsConfig
+	$githubBase = $config.githubBase.TrimEnd('\')
+
+	$matchingAliases = @($config.ownerAliases) | Where-Object {
+		$_.PSObject.Properties['alias'] -and $_.alias -ieq $AliasName
+	}
+	if ($matchingAliases.Count -eq 0) { return $null }
+
+	$entries = [System.Collections.Generic.List[hashtable]]::new()
+	foreach ($ownerAlias in $matchingAliases) {
+		$folderPath = $ownerAlias.localPath.TrimEnd('\')
+		if (-not (Test-Path $folderPath)) { continue }
+		Get-ChildItem -Path $folderPath -Directory |
+			Where-Object { $_.Name -notmatch '^\.' } |
+			Where-Object { Test-GitRepo $_.FullName } |
+			ForEach-Object {
+				$relPath = $_.FullName.Substring($githubBase.Length + 1)
+				$entries.Add(@{
+					RepoName    = $_.Name
+					FullPath    = $_.FullName
+					DisplayName = $relPath
+				})
+			}
+	}
+
+	return $entries
+}
+
+# ---------------------------------------------------------
+# No-param mode or folder-alias mode: interactive repo selector
+# ---------------------------------------------------------
+$_folderAliasName = $null
+$_faRepos         = $null
+if ($Param1) {
+	$_faRepos = Get-FolderAliasRepos $Param1
+	if ($null -ne $_faRepos) { $_folderAliasName = $Param1 }
+}
+
+if (-not $Param1 -or $_folderAliasName) {
+	$separator = [string][char]0x2500 * 30
+	[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+	if ($_folderAliasName) {
+		# Folder-alias mode: show all repos from matching paths with relative paths as display names
+		$aliasContext    = "alias:$($_folderAliasName.ToLower())"
+		$allEntries      = @($_faRepos | Sort-Object { $_.DisplayName })
+		$allDisplayNames = @($allEntries | ForEach-Object { $_.DisplayName })
+		$recent          = @(Get-RecentRepos $aliasContext | Where-Object { $allDisplayNames -contains $_ })
+		$nonRecent       = @($allDisplayNames | Where-Object { $recent -notcontains $_ })
+
+		$fzfInput = @()
+		if ($recent.Count -gt 0) {
+			$fzfInput += $recent
+			$fzfInput += $separator
+		}
+		$fzfInput += $nonRecent
+
+		$selected = $fzfInput | fzf `
+			--style=minimal --height=50% --no-info --layout=reverse `
+			--pointer=">" --gutter=" " `
+			--color="pointer:green,fg+:green:bold,bg+:-1" `
+			"--header=Select repository [$_folderAliasName]:" `
+			--header-first
+
+		if (-not $selected -or $selected -match "^$([char]0x2500)+$") { exit 0 }
+
+		$entry = $allEntries | Where-Object { $_.DisplayName -eq $selected } | Select-Object -First 1
+		if (-not $entry) { exit 0 }
+
+		Save-RecentRepo $aliasContext $selected
+		if ($env:WT_SESSION) {
+			wt --window 0 new-tab --title $entry.RepoName --startingDirectory $entry.FullPath cmd /k
+		}
+		exit 0
+	}
+
 	$ctx       = Get-RepoContext
 	$context   = $ctx.Context
 	$repoBase  = $ctx.RepoBase
 	$githubOrg = $ctx.GitHubOrg
-	$separator = [string][char]0x2500 * 30
 	$ghPrefix  = "[↓] "
-
-	[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 	while ($true) {
 		$allRepos    = Get-LocalRepos $repoBase

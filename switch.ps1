@@ -270,21 +270,18 @@ cmd /k
 		$wt = Get-WtPath $Branch
 		Write-Host "== Creating worktree at '$($wt.WtPath)' =="
 		if (-not (Test-Path $wt.WtRoot)) { New-Item -ItemType Directory -Path $wt.WtRoot | Out-Null }
-		$updCall    = Get-UpdCall $wt.WtRoot
 		$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
 		if ($env:WT_SESSION) {
 			$safeLabel = $Branch -replace "/", "_"
 			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
 			$wtPathStr = $wt.WtPath
 			$repoRoot  = $wt.RepoRoot
-			$updLine   = if ($updCall) { $updCall } else { "echo [info] No upd.cmd found for this repo, skipping." }
 			@"
 @echo off
 git worktree add --track -b "$Branch" "$wtPathStr" "origin/$Branch"
 if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
 $copyGhLine
 cd /d "$wtPathStr"
-$updLine
 echo.
 echo == Changes relative to master ==
 echo.
@@ -294,13 +291,6 @@ changes
 		} else {
 			git worktree add --track -b $Branch $wt.WtPath "origin/$Branch"
 			Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
-			$updCmd = Join-Path $wt.WtRoot "upd.cmd"
-			if (Test-Path $updCmd) {
-				Write-Host "Running upd.cmd..." -ForegroundColor DarkGray
-				Push-Location $wt.WtPath
-				& cmd /c $updCmd full
-				Pop-Location
-			}
 		}
 	} else {
 		Write-Host "== Checking out '$Branch' from origin =="
@@ -542,21 +532,18 @@ cmd /k
 		$wt = Get-WtPath $branchSelected
 		Write-Host "== Creating worktree at '$($wt.WtPath)' =="
 		if (-not (Test-Path $wt.WtRoot)) { New-Item -ItemType Directory -Path $wt.WtRoot | Out-Null }
-		$updCall    = Get-UpdCall $wt.WtRoot
 		$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
 		if ($env:WT_SESSION) {
 			$safeLabel = $branchSelected -replace "/", "_"
 			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
 			$wtPathStr = $wt.WtPath
 			$repoRoot  = $wt.RepoRoot
-			$updLine   = if ($updCall) { $updCall } else { "echo [info] No upd.cmd found for this repo, skipping." }
 			@"
 @echo off
 git worktree add --track -b "$branchSelected" "$wtPathStr" "origin/$branchSelected"
 if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
 $copyGhLine
 cd /d "$wtPathStr"
-$updLine
 echo.
 echo == Changes relative to master ==
 echo.
@@ -566,13 +553,6 @@ changes
 		} else {
 			git worktree add --track -b $branchSelected $wt.WtPath "origin/$branchSelected"
 			Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
-			$updCmd = Join-Path $wt.WtRoot "upd.cmd"
-			if (Test-Path $updCmd) {
-				Write-Host "Running upd.cmd..." -ForegroundColor DarkGray
-				Push-Location $wt.WtPath
-				& cmd /c $updCmd full
-				Pop-Location
-			}
 		}
 	} else {
 		Write-Host "== Checking out '$branchSelected' from origin =="

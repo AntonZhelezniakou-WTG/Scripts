@@ -77,7 +77,21 @@ $_repoCompleter = {
 		foreach ($r in (_ListRemoteRepos $ctx.Owner)) { $remoteSet.Add($r) | Out-Null }
 	}
 
-	# Local repos first, then remote-only (not yet cloned)
+	# Folder alias names (e.g., "Personal") — shown first as navigation shortcuts
+	$folderAliasSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	foreach ($oa in @($config.ownerAliases)) {
+		if ($oa.PSObject.Properties['alias'] -and $oa.alias) {
+			$folderAliasSet.Add($oa.alias) | Out-Null
+		}
+	}
+	$folderAliasSet |
+		Where-Object { $_ -like "$wordToComplete*" } |
+		Sort-Object |
+		ForEach-Object {
+			[System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', "[alias] $_")
+		}
+
+	# Local repos, then remote-only (not yet cloned)
 	$localSet |
 		Where-Object { $_ -like "$wordToComplete*" } |
 		Sort-Object |

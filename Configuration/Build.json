@@ -52,8 +52,9 @@
             "VMHostInstallScripts\\Build.xml"
         ],
         "recent": [
-            "Main\\Build.xml",
-            "SourceControl\\Build.xml"
+            "SourceControl\\Build.xml",
+            "ProcessManagement\\Build.xml",
+            "Main\\Build.xml"
         ]
     },
     "WiseTechGlobal/CargoWise.Database": {
@@ -102,6 +103,29 @@
         ],
         "recent": [
             "PL\\Build.xml"
+        ]
+    },
+    "WiseTechGlobal/CargoWise": {
+        "files": [
+            "Bin\\Build.xml",
+            "Common\\Product\\Services\\Build.xml",
+            "Common\\Product\\WebInfrastructure\\Build.xml",
+            "Common\\Testing\\Introspection\\Build.xml",
+            "Common\\Tools\\Analyzers\\Build.xml",
+            "Enterprise\\Product\\Operations\\Accounting\\Web\\Build.xml",
+            "Enterprise\\Product\\Operations\\ComplianceRisk\\Core\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\AR\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\CK\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\DK\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\MU\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\PE\\Build.xml",
+            "Enterprise\\Product\\Operations\\Customs\\VN\\Build.xml",
+            "Enterprise\\Product\\Operations\\Rating\\Web\\Build.xml",
+            "Enterprise\\Product\\Operations\\RequestForInformation\\Core\\Build.xml",
+            "Enterprise\\Product\\Operations\\Warehouse\\Web\\Build.xml",
+            "Build.xml"
+        ],
+        "recent": [
         ]
     }
 }

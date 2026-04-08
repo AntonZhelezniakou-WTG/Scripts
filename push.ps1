@@ -29,15 +29,18 @@ if (-not $remote) {
 	$remote = "origin"
 	Write-Host ""
 	Write-Host "Branch '$branch' has no upstream." -ForegroundColor Yellow
-	if (-not (Confirm-Action "Push to $remote/$branch and set upstream?")) {
+	$remoteBranch = Read-Host "Remote branch name [$branch]"
+	if ([string]::IsNullOrWhiteSpace($remoteBranch)) { $remoteBranch = $branch }
+
+	if (-not (Confirm-Action "Push to $remote/$remoteBranch and set upstream?")) {
 		Write-Host "Cancelled." -ForegroundColor DarkGray
 		exit 0
 	}
 
 	Write-Host ""
-	Write-Host "Pushing to $remote/$branch..." -ForegroundColor Cyan
+	Write-Host "Pushing to $remote/$remoteBranch..." -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
-	git push -u $remote $branch
+	git push -u $remote "${branch}:${remoteBranch}"
 	$pushExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	if ($pushExit -ne 0) {
