@@ -4,6 +4,7 @@
 . (Join-Path $PSScriptRoot "Git.ps1")
 . (Join-Path $PSScriptRoot "Stash.ps1")
 . (Join-Path $PSScriptRoot "FzfTree.ps1")
+. (Join-Path $PSScriptRoot "copy-wt-extras.ps1")
 
 # Pause until any key is pressed.
 function Wait-AnyKey {
@@ -383,25 +384,18 @@ function Ensure-Fzf {
 	return $false
 }
 
-# Copy .github folder from main repo root into worktree if it exists.
+# Copy extra folders from main repo root into worktree.
+# The list of folders is defined in Common\copy-wt-extras.ps1.
 function Copy-GitHubFolder {
 	param([string]$RepoRoot, [string]$WtPath)
-	$src = Join-Path $RepoRoot ".github"
-	if (Test-Path $src) {
-		$dst = Join-Path $WtPath ".github"
-		Copy-Item -Path $src -Destination $dst -Recurse -Force
-		Write-Host "[info] Copied .github from repo root" -ForegroundColor DarkGray
-	}
+	Copy-WtExtras -RepoRoot $RepoRoot -WtPath $WtPath
 }
 
-# Build xcopy command for .github in cmd tab scripts. Returns empty string if not needed.
+# Build a pwsh call to copy extra folders for use in cmd tab scripts.
 function Get-CopyGitHubLine {
 	param([string]$RepoRoot, [string]$WtPath)
-	$ghSrc = Join-Path $RepoRoot ".github"
-	if (Test-Path $ghSrc) {
-		return "xcopy `"$ghSrc`" `"$WtPath\.github`" /E /I /Y /Q >nul"
-	}
-	return ""
+	$script = Join-Path $PSScriptRoot "copy-wt-extras.ps1"
+	return "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$script`" -RepoRoot `"$RepoRoot`" -WtPath `"$WtPath`""
 }
 
 # Interactive pre-push review. Shows commits ahead of remote as a two-level fzf menu.
@@ -491,7 +485,7 @@ function Get-UpdCall {
 	param([string]$WtRoot)
 	$updCmd = Join-Path $WtRoot "upd.cmd"
 	if (Test-Path $updCmd) {
-		return "`"$updCmd`" full"
+		return "call `"$updCmd`" full"
 	}
 	return ""
 }

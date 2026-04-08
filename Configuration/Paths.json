@@ -18,5 +18,11 @@
 			"worktreeFolder": "CW",
 			"shortFolderNames": true
 		}
+	],
+	"wtExtraFolders": [
+		{
+			"repo": "WiseTechGlobal/CargoWise",
+			"folders": [ ".config", ".idea" ]
+		}
 	]
 }

@@ -173,12 +173,18 @@ if (-not (Confirm-Action "Delete branch '$branchName'$(if ($isWorktree) { " and 
 Write-Host ""
 
 # Step 1: Remove worktree
-if ($isWorktree -and (Test-Path $worktreePath)) {
-	Write-Host "== Removing worktree at '$worktreePath' =="
+if ($isWorktree) {
 	$ErrorActionPreference = "Continue"
-	git worktree remove --force $worktreePath
+	if (Test-Path $worktreePath) {
+		Write-Host "== Removing worktree at '$worktreePath' =="
+		git worktree remove --force $worktreePath
+		Write-Host "Worktree removed." -ForegroundColor Green
+	} else {
+		Write-Host "== Pruning stale worktree registration for '$worktreePath' =="
+		git worktree prune
+		Write-Host "Worktree registration pruned." -ForegroundColor Green
+	}
 	$ErrorActionPreference = "Stop"
-	Write-Host "Worktree removed." -ForegroundColor Green
 }
 
 # Step 2: Remove local branch

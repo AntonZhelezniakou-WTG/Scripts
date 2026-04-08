@@ -122,7 +122,7 @@ while ($true) {
 		'--style=minimal', '--height=80%', '--no-info', '--layout=reverse'
 		'--pointer=>', '--gutter= ', '--marker=>'
 		'--color=pointer:green,fg+:green:bold,bg+:-1'
-		'--header=Space=toggle, Del=discard, Ctrl+Enter=confirm, Esc=cancel'
+		'--header=Space=toggle  -=none  +=all  Del=discard  Ctrl+Enter=confirm  Esc=cancel'
 		'--header-first'
 		"--delimiter=`t"
 		'--with-nth=1'
@@ -130,6 +130,8 @@ while ($true) {
 		'--preview-window=right,60%,wrap'
 		'--bind=start:select-all+hide-input'
 		'--bind=space:toggle'
+		'--bind=-:deselect-all'
+		'--bind=+:select-all'
 		'--bind=enter:ignore'
 		'--bind=ctrl-j:accept'
 		'--expect=del'
@@ -292,38 +294,43 @@ Write-Host "Committed." -ForegroundColor Green
 # ── Phase 6: Offer push ────────────────────────────────────────────────────
 
 $pushBranch = git rev-parse --abbrev-ref HEAD 2>$null
-$pushRemote = if ($pushBranch) { git config --get "branch.$pushBranch.remote" 2>$null } else { $null }
+if (-not $pushBranch -or $pushBranch -eq 'HEAD') { exit 0 }
 
-if ($pushRemote) {
-	Write-Host ""
-	Write-Host "Push? [y/N] " -ForegroundColor Cyan -NoNewline
-	$pushKey = [Console]::ReadKey($true)
-	Write-Host $pushKey.KeyChar
+$ErrorActionPreference = "Continue"
+$pushRemote = git config --get "branch.$pushBranch.remote" 2>$null
+$ErrorActionPreference = "Stop"
+if (-not $pushRemote) { $pushRemote = "origin" }
 
-	if ($pushKey.KeyChar -match '^[Yy]$') {
-		$aheadCommits = @(git log --format="%H" "${pushRemote}/${pushBranch}..HEAD" 2>$null)
+Write-Host ""
+Write-Host "Push? [y/N] " -ForegroundColor Cyan -NoNewline
+$pushKey = [Console]::ReadKey($true)
+Write-Host $pushKey.KeyChar
 
-		$doPush = $true
-		if ($aheadCommits.Count -gt 1) {
-			$doPush = Invoke-PushReview -Remote $pushRemote -Branch $pushBranch
-		}
+if ($pushKey.KeyChar -match '^[Yy]$') {
+	$ErrorActionPreference = "Continue"
+	$aheadCommits = @(git log --format="%H" "${pushRemote}/${pushBranch}..HEAD" 2>$null)
+	$ErrorActionPreference = "Stop"
 
-		if ($doPush) {
-			Write-Host ""
-			Write-Host "Pushing to $pushRemote/$pushBranch..." -ForegroundColor Cyan
-			$ErrorActionPreference = "Continue"
-			git push $pushRemote $pushBranch
-			$pushExit = $LASTEXITCODE
-			$ErrorActionPreference = "Stop"
-			if ($pushExit -ne 0) {
-				Write-Host "Push failed." -ForegroundColor Red
-			} else {
-				Write-Host "Pushed." -ForegroundColor Green
-			}
+	$doPush = $true
+	if ($aheadCommits.Count -gt 1) {
+		$doPush = Invoke-PushReview -Remote $pushRemote -Branch $pushBranch
+	}
+
+	if ($doPush) {
+		Write-Host ""
+		Write-Host "Pushing to $pushRemote/$pushBranch..." -ForegroundColor Cyan
+		$ErrorActionPreference = "Continue"
+		git push -u $pushRemote $pushBranch
+		$pushExit = $LASTEXITCODE
+		$ErrorActionPreference = "Stop"
+		if ($pushExit -ne 0) {
+			Write-Host "Push failed." -ForegroundColor Red
 		} else {
-			Write-Host "Push skipped." -ForegroundColor DarkGray
+			Write-Host "Pushed." -ForegroundColor Green
 		}
 	} else {
 		Write-Host "Push skipped." -ForegroundColor DarkGray
 	}
+} else {
+	Write-Host "Push skipped." -ForegroundColor DarkGray
 }

@@ -21,11 +21,33 @@ if ($branch -eq "HEAD") {
 }
 
 # Detect remote tracking branch
-$remote = git config --get "branch.$branch.remote" 2>&1
-if ($LASTEXITCODE -ne 0 -or -not $remote) {
-	Write-Host "No remote tracking branch configured for '$branch'." -ForegroundColor Red
-	Wait-AnyKey
-	exit 1
+$ErrorActionPreference = "Continue"
+$remote = git config --get "branch.$branch.remote" 2>$null
+$ErrorActionPreference = "Stop"
+
+if (-not $remote) {
+	$remote = "origin"
+	Write-Host ""
+	Write-Host "Branch '$branch' has no upstream." -ForegroundColor Yellow
+	if (-not (Confirm-Action "Push to $remote/$branch and set upstream?")) {
+		Write-Host "Cancelled." -ForegroundColor DarkGray
+		exit 0
+	}
+
+	Write-Host ""
+	Write-Host "Pushing to $remote/$branch..." -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	git push -u $remote $branch
+	$pushExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($pushExit -ne 0) {
+		Write-Host "Push failed." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+	Write-Host "Pushed." -ForegroundColor Green
+	Ensure-FetchRefspec $branch
+	exit 0
 }
 
 # Fetch to check if remote is ahead
