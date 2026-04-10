@@ -1,6 +1,6 @@
 param(
 	[string]$WorkDir,
-	[string]$Action   # "apply" = show stash list; empty = create new stash
+	[string]$Action   # "apply"/"list" = show stash list; empty = create new stash
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,9 +17,15 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not (Ensure-Fzf)) { Wait-AnyKey; exit 1 }
 
-# ── APPLY mode ───────────────────────────────────────────────────────────────
+# ── APPLY / LIST mode ────────────────────────────────────────────────────────
 
-if ($Action -eq 'apply') {
+if ($Action -eq 'apply' -or $Action -eq 'list') {
+
+	$esc_   = [char]27
+	$yellow = "$esc_[33m"
+	$green  = "$esc_[32m"
+	$red    = "$esc_[31m"
+	$reset  = "$esc_[0m"
 
 	function Get-Stashes {
 		$ErrorActionPreference = "Continue"
@@ -38,6 +44,47 @@ if ($Action -eq 'apply') {
 		})
 	}
 
+	# Show files changed in a stash with diff preview. Esc returns $false, any other exit $true.
+	function Show-StashFiles {
+		param([PSCustomObject]$Stash)
+
+		$ErrorActionPreference = "Continue"
+		$nameStatus = git stash show --name-status $Stash.Ref 2>$null
+		$ErrorActionPreference = "Stop"
+
+		if (-not $nameStatus) {
+			Write-Host "No file info for '$($Stash.Ref)'." -ForegroundColor Yellow
+			Start-Sleep -Milliseconds 800
+			return $false
+		}
+
+		# Field layout: {1}=coloured display  {2}=plain path  {3}=stash ref
+		# Ref goes into field 3 so fzf substitutes it via placeholder — never embedded raw in the preview string.
+		$ref = $Stash.Ref
+		$entries = $nameStatus | ForEach-Object {
+			if ($_ -match '^([MADRCT])\s+(.+)$') {
+				$st  = $Matches[1]; $path = $Matches[2]
+				$col = switch ($st) {
+					'M' { $yellow } 'A' { $green } 'D' { $red } default { $reset }
+				}
+				"${col}${st}${reset}   ${path}`t${path}`t${ref}"
+			}
+		} | Where-Object { $_ }
+
+		$null = $entries | fzf `
+			--style=minimal --no-input --disabled --height=60% --no-info --layout=reverse `
+			--ansi `
+			--pointer=">" --gutter=" " `
+			--color="pointer:green,fg+:green:bold,bg+:-1" `
+			"--delimiter=`t" '--with-nth=1' `
+			'--preview=git stash show -p --color=always {3} -- {2}' `
+			'--preview-window=right,60%,wrap' `
+			"--header=Files in '$($Stash.Name)'  (Esc=back to list):" `
+			'--header-first'
+
+		return $false  # always returns to stash list
+	}
+
 	while ($true) {
 		$stashes = Get-Stashes
 
@@ -47,7 +94,6 @@ if ($Action -eq 'apply') {
 			exit 0
 		}
 
-		# Tab-separated: visible name | hidden ref (e.g. stash@{0})
 		$menuEntries = $stashes | ForEach-Object { "$($_.Name)`t$($_.Ref)" }
 
 		$lines = $menuEntries | fzf `
@@ -57,9 +103,9 @@ if ($Action -eq 'apply') {
 			"--delimiter=`t" '--with-nth=1' `
 			'--preview=git stash show --color=always --stat {2}' `
 			'--preview-window=right,60%,wrap' `
-			--header="Select stash (Enter=apply, Del=drop, Esc=quit):" `
+			"--header=Select stash (Enter=inspect files, Ctrl+Enter=apply, Del=drop, Esc=quit):" `
 			--header-first `
-			--expect="del,esc"
+			--expect="del,esc,ctrl-j"
 
 		if (-not $lines) { exit 0 }
 
@@ -84,40 +130,49 @@ if ($Action -eq 'apply') {
 			continue
 		}
 
-		if (-not (Confirm-Action "Apply '$($stash.Name)'?")) { continue }
-
-		$ErrorActionPreference = "Continue"
-		$dirtyBefore     = git status --porcelain --ignored=no 2>$null
-		$ErrorActionPreference = "Stop"
-		$hadLocalChanges = ($dirtyBefore | Where-Object { $_ -ne "" }).Count -gt 0
-
-		$ErrorActionPreference = "Continue"
-		git stash apply $stash.Ref
-		$applyExit = $LASTEXITCODE
-		$ErrorActionPreference = "Stop"
-
-		if ($applyExit -ne 0) {
-			$conflictsScript = Join-Path $PSScriptRoot "conflicts.ps1"
-			& $conflictsScript -Mode stash -StashRef $stash.Ref
+		# Enter — drill into file list
+		if (-not $keyUsed) {
+			Show-StashFiles -Stash $stash
 			continue
 		}
 
-		Write-Host ""
-		if ($hadLocalChanges) {
-			Write-Host "[warn] You had local changes before applying the stash." -ForegroundColor Yellow
-			Write-Host "       Review the result carefully - changes have been merged." -ForegroundColor Yellow
-			Wait-AnyKey
-		} else {
-			$commitMsg = "Applying stash: $($stash.Name)"
-			if (Confirm-Action "Commit applied changes?") {
-				git add .
-				git commit -m $commitMsg
-				if ($LASTEXITCODE -eq 0) {
-					Write-Host "Committed: $commitMsg" -ForegroundColor Green
-				} else {
-					Write-Host "Commit failed." -ForegroundColor Red
-				}
+		# Ctrl+Enter (ctrl-j) — apply
+		if ($keyUsed -eq "ctrl-j") {
+			if (-not (Confirm-Action "Apply '$($stash.Name)'?")) { continue }
+
+			$ErrorActionPreference = "Continue"
+			$dirtyBefore     = git status --porcelain --ignored=no 2>$null
+			$ErrorActionPreference = "Stop"
+			$hadLocalChanges = ($dirtyBefore | Where-Object { $_ -ne "" }).Count -gt 0
+
+			$ErrorActionPreference = "Continue"
+			git stash apply $stash.Ref
+			$applyExit = $LASTEXITCODE
+			$ErrorActionPreference = "Stop"
+
+			if ($applyExit -ne 0) {
+				$conflictsScript = Join-Path $PSScriptRoot "conflicts.ps1"
+				& $conflictsScript -Mode stash -StashRef $stash.Ref
+				continue
+			}
+
+			Write-Host ""
+			if ($hadLocalChanges) {
+				Write-Host "[warn] You had local changes before applying the stash." -ForegroundColor Yellow
+				Write-Host "       Review the result carefully - changes have been merged." -ForegroundColor Yellow
 				Wait-AnyKey
+			} else {
+				$commitMsg = "Applying stash: $($stash.Name)"
+				if (Confirm-Action "Commit applied changes?") {
+					git add .
+					git commit -m $commitMsg
+					if ($LASTEXITCODE -eq 0) {
+						Write-Host "Committed: $commitMsg" -ForegroundColor Green
+					} else {
+						Write-Host "Commit failed." -ForegroundColor Red
+					}
+					Wait-AnyKey
+				}
 			}
 		}
 	}

@@ -636,10 +636,13 @@ function Invoke-BlockingProcessMenu {
 
 	function TryRemoveFolder ([string]$Path) {
 		try {
+			$ProgressPreference = 'SilentlyContinue'
 			Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
 			return $true
 		} catch {
 			return $false
+		} finally {
+			$ProgressPreference = 'Continue'
 		}
 	}
 

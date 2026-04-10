@@ -16,6 +16,10 @@ $owners  = @($_cfg.defaultOwner) + @($_cfg.ownerAliases | ForEach-Object { $_.gi
 # Determine if $Repo is a full URL or just a name
 if ($Repo -match "^https?://" -or $Repo -match "^git@") {
 	$Url = $Repo
+	# Embed repo owner as URL username so credential manager selects the correct account
+	if ($Url -match "^https://github\.com/([^/]+)/") {
+		$Url = $Url -replace "^https://github\.com/", "https://$($Matches[1])@github.com/"
+	}
 } else {
 	# Search for repo by name across known owners
 	$Url = $null
@@ -53,7 +57,13 @@ if (-not $defaultBranch) {
 	# Fallback: check if master or main exists
 	$ErrorActionPreference = "Continue"
 	$refs = git ls-remote --heads $Url 2>$null
+	$refsExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
+	if ($refsExit -ne 0) {
+		Write-Host "Error: repository '$Url' not found or not accessible." -ForegroundColor Red
+		Write-Host "If this is a private repo, check that your git credentials have access." -ForegroundColor Yellow
+		exit 1
+	}
 	if ($refs -match "refs/heads/master\b") {
 		$defaultBranch = "master"
 	} elseif ($refs -match "refs/heads/main\b") {

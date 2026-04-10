@@ -52,9 +52,9 @@
             "VMHostInstallScripts\\Build.xml"
         ],
         "recent": [
+            "Main\\Build.xml",
             "SourceControl\\Build.xml",
-            "ProcessManagement\\Build.xml",
-            "Main\\Build.xml"
+            "ProcessManagement\\Build.xml"
         ]
     },
     "WiseTechGlobal/CargoWise.Database": {

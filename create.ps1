@@ -55,7 +55,7 @@ if ($alreadyExistsCI) {
 	$key = [Console]::ReadKey($true)
 	Write-Host $key.KeyChar
 	if ($key.KeyChar -match '^[Yy]$' -or $key.Key -eq 'Enter') {
-		$switchPs1 = Join-Path $PSScriptRoot "switch.ps1"
+		$switchPs1 = Join-Path $PSScriptRoot "branches.ps1"
 		& $switchPs1 -WorkDir $WorkDir -Branch $existingName
 		exit $LASTEXITCODE
 	}

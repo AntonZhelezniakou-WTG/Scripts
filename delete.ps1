@@ -181,7 +181,9 @@ if ($isWorktree) {
 		# Git registration is cleaned up via 'git worktree prune' after the folder is gone.
 		$folderRemoved = $false
 		try {
+			$ProgressPreference = 'SilentlyContinue'
 			Remove-Item -LiteralPath $worktreePath -Recurse -Force -ErrorAction Stop
+			$ProgressPreference = 'Continue'
 			$folderRemoved = $true
 		} catch {
 			# Folder locked — show interactive process-kill menu
