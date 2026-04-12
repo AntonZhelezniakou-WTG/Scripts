@@ -4,6 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 if ($WorkDir) {
 	Set-Location $WorkDir
@@ -76,6 +77,8 @@ $ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) {
 	Write-Host "Warning: gc finished with errors (locked files?)" -ForegroundColor Yellow
 }
+
+Apply-GitUser ((git rev-parse --show-toplevel).Trim() -replace '/', '\')
 
 Write-Host "Done"
 exit 0

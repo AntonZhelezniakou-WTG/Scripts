@@ -36,6 +36,53 @@ function Get-RepoRoot {
 	return $currentDir
 }
 
+# Search parent directories (starting from $RepoPath inclusive) for a .gituser file
+# and apply its settings to the repo's local .git/config, overwriting existing keys.
+#
+# Supports an optional [github] section:
+#   [github]
+#       user = MyGitHubLogin
+# When present:
+#   - sets credential."https://github.com".username so GCM picks the account without prompting
+#   - embeds the login into remote.origin.url as a secondary hint
+function Apply-GitUser {
+	param([string]$RepoPath)
+
+	$dir = $RepoPath
+	while ($dir) {
+		$candidate = Join-Path $dir ".gituser"
+		if (Test-Path $candidate) {
+			$settings = git config --file $candidate --list 2>$null
+			if ($settings) {
+				foreach ($line in $settings) {
+					if ($line -match '^(.+?)=(.*)$') {
+						git -C $RepoPath config --local $Matches[1] $Matches[2]
+					}
+				}
+				Write-Host "Applied .gituser: $candidate" -ForegroundColor DarkGray
+			}
+
+			$githubUser = (git -C $RepoPath config --local github.user 2>$null)?.Trim()
+			if ($githubUser) {
+				# Tell GCM which account to use — this is what actually prevents the picker
+				git -C $RepoPath config --local 'credential.https://github.com.username' $githubUser
+
+				# Also embed in remote URL as a secondary hint
+				$currentUrl = (git -C $RepoPath remote get-url origin 2>$null)?.Trim()
+				if ($currentUrl -match '^https://github\.com/') {
+					$newUrl = "https://$githubUser@github.com/" + ($currentUrl -replace '^https://(?:[^@]+@)?github\.com/', '')
+					git -C $RepoPath remote set-url origin $newUrl
+				}
+				Write-Host "  GCM account: $githubUser" -ForegroundColor DarkGray
+			}
+			return
+		}
+		$parent = Split-Path $dir -Parent
+		if ($parent -eq $dir) { break }
+		$dir = $parent
+	}
+}
+
 # Load Paths.json config. Returns defaults if file is missing.
 function Get-PathsConfig {
 	$configPath = Join-Path $PSScriptRoot "..\Configuration\Paths.json"
