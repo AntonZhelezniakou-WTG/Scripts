@@ -18,6 +18,12 @@ if ($Files -contains '--no-cache') {
 	$Files   = @($Files | Where-Object { $_ -ne '--no-cache' })
 }
 
+# Detect 'multiple' keyword for multi-select mode
+$isMultiMode = $Files -contains 'multiple'
+if ($isMultiMode) {
+	$Files = @($Files | Where-Object { $_ -ne 'multiple' })
+}
+
 # Strip empty/whitespace strings cmd may inject when %* is empty
 $Files = @($Files | Where-Object { $_ -and $_.Trim() -ne '' })
 
@@ -107,7 +113,9 @@ $MAX_RECENT = 5
 function Get-RepoKey {
 	$key = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "get.ps1") `
 		-WorkDir $mainRoot -Command repository -AsKey 2>$null
-	return ($key | Select-Object -Last 1).Trim()
+	$last = $key | Select-Object -Last 1
+	if ($last) { return $last.Trim() }
+	return $null
 }
 
 function Read-BuildConfig([string]$RepoKey) {
@@ -117,12 +125,21 @@ function Read-BuildConfig([string]$RepoKey) {
 	return $null
 }
 
-function Write-BuildConfig([string]$RepoKey, [string[]]$BuildFiles, [string[]]$Recent) {
+function Write-BuildConfig([string]$RepoKey, [string[]]$BuildFiles, [string[]]$Recent, [string[]]$RecentMulti = $null) {
 	$config = [ordered]@{}
 	if (Test-Path $configFile) {
 		$existing = Get-Content $configFile -Raw | ConvertFrom-Json
 		foreach ($prop in $existing.PSObject.Properties) { $config[$prop.Name] = $prop.Value }
 	}
+
+	# Preserve existing recentMulti when not explicitly provided
+	if ($null -eq $RecentMulti -and $config.Contains($RepoKey)) {
+		$old = $config[$RepoKey]
+		if ($old.PSObject.Properties['recentMulti']) {
+			$RecentMulti = @($old.recentMulti)
+		}
+	}
+
 	$config[$RepoKey] = [PSCustomObject]@{ files = $BuildFiles; recent = $Recent }
 	if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir | Out-Null }
 
@@ -144,12 +161,26 @@ function Write-BuildConfig([string]$RepoKey, [string[]]$BuildFiles, [string[]]$R
 		$sb.AppendLine("        ],") | Out-Null
 
 		$r = @(if ($val.PSObject.Properties['recent']) { $val.recent } else { @() })
+		$m = if ($k -eq $RepoKey -and $RecentMulti) { $RecentMulti }
+		     elseif ($val.PSObject.Properties['recentMulti']) { @($val.recentMulti) }
+		     else { @() }
+		$hasMulti = $m.Count -gt 0
+		$rTrail   = if ($hasMulti) { "," } else { "" }
 		$sb.AppendLine("        `"recent`": [") | Out-Null
 		for ($j = 0; $j -lt $r.Count; $j++) {
 			$vc = if ($j -lt $r.Count - 1) { "," } else { "" }
 			$sb.AppendLine("            $($r[$j] | ConvertTo-Json)$vc") | Out-Null
 		}
-		$sb.AppendLine("        ]") | Out-Null
+		$sb.AppendLine("        ]$rTrail") | Out-Null
+
+		if ($hasMulti) {
+			$sb.AppendLine("        `"recentMulti`": [") | Out-Null
+			for ($j = 0; $j -lt $m.Count; $j++) {
+				$vc = if ($j -lt $m.Count - 1) { "," } else { "" }
+				$sb.AppendLine("            $($m[$j] | ConvertTo-Json)$vc") | Out-Null
+			}
+			$sb.AppendLine("        ]") | Out-Null
+		}
 		$sb.AppendLine("    }$comma") | Out-Null
 	}
 	$sb.Append("}") | Out-Null
@@ -190,9 +221,129 @@ function ConvertTo-CacheRelPath([string]$AbsPath) {
 
 $repoKey = Get-RepoKey
 
-# If a specific Build.xml was passed, skip scanning and go straight to mode selection
+# If specific Build.xml files were passed, skip scanning and go straight to mode selection
 if ($xmlFiles.Count -gt 0) {
-	$selectedFile = (Resolve-Path $xmlFiles[0]).Path
+	$buildDirs = @($xmlFiles | ForEach-Object { Split-Path (Resolve-Path $_).Path -Parent })
+} elseif ($isMultiMode) {
+	$MAX_MULTI = 10
+
+	# --- Scan / cache Build.xml files ---
+	$allFiles = $null
+	if (-not $NoCache -and $repoKey) {
+		$cached = Read-BuildConfig $repoKey
+		if ($cached) {
+			$cachedFiles = @(if ($cached.PSObject.Properties['files']) { $cached.files } else { $cached })
+			if ($cachedFiles.Count -gt 0 -and -not [System.IO.Path]::IsPathRooted($cachedFiles[0])) {
+				$allFiles = @($cachedFiles | ForEach-Object { Join-Path $repoRoot $_ })
+			}
+		}
+	}
+	if (-not $allFiles) {
+		Write-Host "Scanning for Build.xml files..." -ForegroundColor DarkGray
+		$scannedFiles = @(Find-BuildFiles $mainRoot)
+		if ($scannedFiles.Count -eq 0) {
+			Write-Host "No Build.xml files found." -ForegroundColor Yellow
+			Wait-AnyKey
+			exit 0
+		}
+		$allFiles = @($scannedFiles | ForEach-Object { Join-Path $repoRoot (ConvertTo-CacheRelPath $_) })
+		if ($repoKey) {
+			$relFiles = @($scannedFiles | ForEach-Object { ConvertTo-CacheRelPath $_ })
+			Write-BuildConfig $repoKey $relFiles @()
+		}
+	}
+
+	$visibleFiles = @($allFiles | Where-Object { $_.StartsWith($currentDir, [System.StringComparison]::OrdinalIgnoreCase) })
+	if ($visibleFiles.Count -eq 0) {
+		Write-Host "No Build.xml files found under current directory." -ForegroundColor Yellow
+		Wait-AnyKey
+		exit 0
+	}
+
+	$allEntries = @($visibleFiles | ForEach-Object { ConvertTo-RelEntry $_ })
+
+	# --- Read recent multi combos (pipe-delimited strings) ---
+	$recentMulti = @()
+	if ($repoKey) {
+		$cached = Read-BuildConfig $repoKey
+		if ($cached -and $cached.PSObject.Properties['recentMulti']) {
+			$recentMulti = @($cached.recentMulti)
+		}
+	}
+
+	$selectedFiles = $null
+
+	# --- Phase 1: Recent combos menu (if any exist) ---
+	if ($recentMulti.Count -gt 0) {
+		$separator = [string][char]0x2500 * 30
+		$comboLabels = @($recentMulti | ForEach-Object {
+			($_ -split '\|' | ForEach-Object {
+				ConvertTo-RelEntry (Join-Path $repoRoot $_)
+			}) -join '  +  '
+		})
+
+		$menuItems = @($comboLabels) + @($separator) + @("Custom selection...")
+
+		$picked = $menuItems | fzf `
+			--style=minimal --height=50% --no-info --layout=reverse `
+			--pointer=">" --gutter=" " `
+			--color="pointer:green,fg+:green:bold,bg+:-1" `
+			--header="Recent build combos (Enter=select, Esc=cancel):" `
+			--header-first
+
+		if (-not $picked) { exit 0 }
+
+		if ($picked -notmatch "^$([char]0x2500)+$" -and $picked -ne "Custom selection...") {
+			$idx = [array]::IndexOf($comboLabels, $picked)
+			if ($idx -ge 0) {
+				$paths = $recentMulti[$idx] -split '\|'
+				$selectedFiles = @($paths | ForEach-Object { Join-Path $repoRoot $_ })
+			}
+		}
+	}
+
+	# --- Phase 2: Multi-select fzf ---
+	if (-not $selectedFiles) {
+		$fzfArgs = @(
+			'--multi'
+			'--style=minimal', '--height=50%', '--no-info', '--layout=reverse'
+			'--pointer=>', '--gutter= ', '--marker=>'
+			'--color=pointer:green,marker:green,fg+:green:bold,bg+:-1'
+			'--header=Tab=toggle  Enter=confirm  Esc=cancel'
+			'--header-first'
+			'--bind=space:toggle'
+		)
+		$output = $allEntries | fzf @fzfArgs
+
+		if (-not $output) { exit 0 }
+
+		$selectedEntries = @($output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+		$selectedFiles = @()
+		foreach ($entry in $selectedEntries) {
+			for ($i = 0; $i -lt $allEntries.Count; $i++) {
+				if ($allEntries[$i] -eq $entry) {
+					$selectedFiles += $visibleFiles[$i]
+					break
+				}
+			}
+		}
+	}
+
+	if ($selectedFiles.Count -eq 0) { exit 0 }
+
+	# --- Save combo to recentMulti ---
+	if ($repoKey) {
+		$comboStr = ($selectedFiles | ForEach-Object { ConvertTo-CacheRelPath $_ }) -join '|'
+		$newMulti = @($comboStr) + @($recentMulti | Where-Object { $_ -ne $comboStr })
+		if ($newMulti.Count -gt $MAX_MULTI) { $newMulti = $newMulti[0..($MAX_MULTI - 1)] }
+		$relFiles = @($allFiles | ForEach-Object { ConvertTo-CacheRelPath $_ })
+		$cachedObj = Read-BuildConfig $repoKey
+		$recent = @()
+		if ($cachedObj -and $cachedObj.PSObject.Properties['recent']) { $recent = @($cachedObj.recent) }
+		Write-BuildConfig $repoKey $relFiles $recent $newMulti
+	}
+
+	$buildDirs = @($selectedFiles | ForEach-Object { Split-Path $_ -Parent })
 } else {
 	$forceRescan = $NoCache
 
@@ -285,6 +436,7 @@ if ($xmlFiles.Count -gt 0) {
 		}
 		break
 	}
+	$buildDirs = @(Split-Path $selectedFile -Parent)
 }
 
 # Select build mode
@@ -297,7 +449,7 @@ $mode = @("FullBuild", "Build", "QuickBuild") | fzf `
 
 if (-not $mode) { exit 0 }
 
-$buildDir = Split-Path $selectedFile -Parent
-$cmd = "qgl build -m $mode --skip-network-check -p `"$buildDir`""
+$pArgs = ($buildDirs | ForEach-Object { "-p `"$_`"" }) -join " "
+$cmd = "qgl build -m $mode --skip-network-check $pArgs"
 Write-Host $cmd -ForegroundColor DarkGray
 Invoke-Expression $cmd

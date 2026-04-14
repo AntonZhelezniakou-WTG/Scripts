@@ -11,8 +11,8 @@
   ],
   "alias:personal": [
     "WiseTechGlobal\\Personal\\Scripts",
-    "WiseTechGlobal\\Personal\\vhdx-cow",
+    "WiseTechGlobal\\Personal\\Diff-builder",
     "Personal\\Work-scripts",
-    "WiseTechGlobal\\Personal\\Diff-builder"
+    "WiseTechGlobal\\Personal\\vhdx-cow"
   ]
 }

@@ -121,12 +121,13 @@ if ($isEmptyRepo) {
 	Write-Host "Done. Cloned with only '$defaultBranch'." -ForegroundColor Green
 }
 
-# Apply .gituser settings if found in parent hierarchy
 $fullPath = (Resolve-Path $Directory).Path
-Apply-GitUser $fullPath
 
-# Signal cmd wrapper to cd into the cloned directory
+# Signal cmd wrapper to cd into the cloned directory (write before Apply-GitUser so it always happens)
 if ($CdFile) {
 	$fullPath | Set-Content $CdFile -Encoding ASCII
 }
+
+# Apply .gituser settings if found in parent hierarchy
+Apply-GitUser $fullPath
 exit 0
