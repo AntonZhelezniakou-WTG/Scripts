@@ -78,9 +78,9 @@ if (-not $defaultBranch) {
 
 Write-Host "Default branch: $defaultBranch" -ForegroundColor Cyan
 
-# Determine target directory
+# Determine target directory — strip trailing slashes and .git suffix before taking the leaf name
 if (-not $Directory) {
-	$Directory = ($Url -replace "\.git$", "" -split "[/:]")[-1]
+	$Directory = ($Url -replace "\.git/?$", "" -replace "/+$", "" -split "[/:]")[-1]
 }
 
 if ($isEmptyRepo) {
