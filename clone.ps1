@@ -125,7 +125,7 @@ $fullPath = (Resolve-Path $Directory).Path
 
 # Signal cmd wrapper to cd into the cloned directory (write before Apply-GitUser so it always happens)
 if ($CdFile) {
-	$fullPath | Set-Content $CdFile -Encoding ASCII
+	[System.IO.File]::WriteAllText($CdFile, $fullPath, [System.Text.Encoding]::ASCII)
 }
 
 # Apply .gituser settings if found in parent hierarchy

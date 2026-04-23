@@ -21,6 +21,37 @@ function Confirm-Action {
 	return ($key.KeyChar -match '^[Yy]$' -or $key.Key -eq 'Enter')
 }
 
+# After a successful push, check if a PR already exists for the current branch.
+# If not, offer to create one (y/N, default N).
+function Invoke-PrCreate {
+	$ErrorActionPreference = "Continue"
+	$branch = git rev-parse --abbrev-ref HEAD 2>$null
+	$ErrorActionPreference = "Stop"
+	if (-not $branch -or $branch -eq 'HEAD') { return }
+
+	$ErrorActionPreference = "Continue"
+	$prJson = gh pr view --json number,url 2>$null
+	$prExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+
+	if ($prExit -eq 0 -and $prJson) {
+		$pr = $prJson | ConvertFrom-Json
+		Write-Host "PR already exists: $($pr.url)" -ForegroundColor DarkGray
+		return
+	}
+
+	Write-Host ""
+	Write-Host "Create PR? [y/N] " -ForegroundColor Cyan -NoNewline
+	$key = [Console]::ReadKey($true)
+	Write-Host $key.KeyChar
+	if ($key.KeyChar -notmatch '^[Yy]$') { return }
+
+	Write-Host ""
+	$ErrorActionPreference = "Continue"
+	gh pr create --fill
+	$ErrorActionPreference = "Stop"
+}
+
 # Get repo root from $PWD, preserving symlinks (unlike git rev-parse --show-toplevel).
 function Get-RepoRoot {
 	$gitCwd     = (git rev-parse --show-prefix 2>$null)

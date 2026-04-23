@@ -53,6 +53,9 @@ if (-not $remote) {
 	exit 0
 }
 
+# Ensure the fetch refspec exists so git updates refs/remotes/origin/<branch>
+Ensure-FetchRefspec $branch
+
 # Fetch to check if remote is ahead
 Write-Host "Fetching $remote/$branch..." -ForegroundColor Cyan
 $ErrorActionPreference = "Continue"
@@ -110,3 +113,5 @@ if ($pushExit -ne 0) {
 	Wait-AnyKey
 	exit 1
 }
+
+Invoke-PrCreate

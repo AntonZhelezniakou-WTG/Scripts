@@ -4,13 +4,16 @@
     "CargoWise.Shared"
   ],
   "wisetechglobal": [
-    "DevTools"
+    "CargoWise.Database",
+    "DevTools",
+    "CargoWise.Shared"
   ],
   "antonzhelezniakou-wtg": [
     "Diff-builder"
   ],
   "alias:personal": [
     "WiseTechGlobal\\Personal\\Scripts",
+    "Personal\\developer-console",
     "WiseTechGlobal\\Personal\\Diff-builder",
     "Personal\\Work-scripts",
     "WiseTechGlobal\\Personal\\vhdx-cow"

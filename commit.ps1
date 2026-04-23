@@ -328,6 +328,7 @@ if ($pushKey.KeyChar -match '^[Yy]$') {
 			Write-Host "Push failed." -ForegroundColor Red
 		} else {
 			Write-Host "Pushed." -ForegroundColor Green
+			Invoke-PrCreate
 		}
 	} else {
 		Write-Host "Push skipped." -ForegroundColor DarkGray

@@ -1,6 +1,7 @@
 param(
 	[string]$WorkDir,
-	[string]$Target
+	[string]$Target,
+	[switch]$InNewTab   # internal: set when relaunched in a separate Windows Terminal tab
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,6 +85,20 @@ if ($matchedWorktree) {
 if ($branchName -eq "master" -or $branchName -eq "main") {
 	Write-Host "ERROR: Cannot delete protected branch: $branchName" -ForegroundColor Red
 	exit 1
+}
+
+# Worktree deletion is slow — do it in a separate Windows Terminal tab so the
+# current one isn't blocked. Plain branches delete instantly, don't relaunch.
+if ($isWorktree -and $env:WT_SESSION -and -not $InNewTab) {
+	$mainRoot = Get-MainWorktreePath (Get-RepoRoot)
+	if (-not $mainRoot) { $mainRoot = (Get-Location).Path }
+
+	$tabTitle = "delete: $branchName"
+	wt --window 0 new-tab --title $tabTitle --startingDirectory $mainRoot `
+		pwsh -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath `
+		-WorkDir $mainRoot -Target $branchName -InNewTab
+	Write-Host "Opened WT tab to delete worktree: $branchName" -ForegroundColor Cyan
+	exit 0
 }
 
 Write-Host ""
@@ -229,4 +244,9 @@ if ($isInsideWorktree) {
 		Write-Host "  Left worktree. Main repo: $repoRoot" -ForegroundColor Cyan
 		Write-Host "  Run: cd `"$repoRoot`"" -ForegroundColor Cyan
 	}
+}
+
+# If we were relaunched in a separate WT tab, wait for keypress then close
+if ($InNewTab) {
+	Wait-AnyKey
 }

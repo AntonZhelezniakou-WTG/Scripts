@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
 # MSBuild tool paths
-$msbuildPath = "C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin\MSBuild.exe"
+$msbuildPath = "C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin\amd64\MSBuild.exe"
 $devenvPath  = "C:\Program Files\Microsoft Visual Studio\18\Professional\Common7\IDE\devenv.exe"
 
 # Allow --no-cache passed as a plain string argument (e.g. from cmd wrappers)
@@ -73,7 +73,7 @@ if ($solutionFiles.Count -gt 0) {
 			Write-Host "Path    : $sln"  -ForegroundColor DarkGray
 
 			$ErrorActionPreference = "Continue"
-			& $msbuildPath $sln /restore /p:RestorePackagesConfig=true /p:Configuration=Debug "/p:Platform=Any CPU"
+			& $msbuildPath $sln /restore /p:RestorePackagesConfig=true /p:Configuration=Debug
 			$rc = $LASTEXITCODE
 			$ErrorActionPreference = "Stop"
 
