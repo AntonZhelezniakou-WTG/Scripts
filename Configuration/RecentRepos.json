@@ -4,8 +4,9 @@
     "CargoWise.Shared"
   ],
   "wisetechglobal": [
-    "CargoWise.Database",
+    "Tools.CWSync",
     "DevTools",
+    "CargoWise.Database",
     "CargoWise.Shared"
   ],
   "antonzhelezniakou-wtg": [
