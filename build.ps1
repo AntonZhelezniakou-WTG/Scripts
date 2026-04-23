@@ -288,8 +288,10 @@ if ($xmlFiles.Count -gt 0) {
 			--style=minimal --height=50% --no-info --layout=reverse `
 			--pointer=">" --gutter=" " `
 			--color="pointer:green,fg+:green:bold,bg+:-1" `
-			--header="Recent build combos (Enter=select, Esc=cancel):" `
-			--header-first
+			--header="Recent build combos (Ctrl+Enter=select, Esc=cancel):" `
+			--header-first `
+			--bind="enter:ignore" `
+			--bind="ctrl-j:accept"
 
 		if (-not $picked) { exit 0 }
 
@@ -309,9 +311,11 @@ if ($xmlFiles.Count -gt 0) {
 			'--style=minimal', '--height=50%', '--no-info', '--layout=reverse'
 			'--pointer=>', '--gutter= ', '--marker=>'
 			'--color=pointer:green,marker:green,fg+:green:bold,bg+:-1'
-			'--header=Tab=toggle  Enter=confirm  Esc=cancel'
+			'--header=Tab=toggle  Ctrl+Enter=confirm  Esc=cancel'
 			'--header-first'
 			'--bind=space:toggle'
+			'--bind=enter:ignore'
+			'--bind=ctrl-j:accept'
 		)
 		$output = $allEntries | fzf @fzfArgs
 
@@ -407,9 +411,11 @@ if ($xmlFiles.Count -gt 0) {
 			--style=minimal --no-input --disabled --height=50% --no-info --layout=reverse `
 			--pointer=">" --gutter=" " `
 			--color="pointer:green,fg+:green:bold,bg+:-1" `
-			--header="Select Build.xml (Ctrl+R: rescan):" `
+			--header="Select Build.xml (Ctrl+Enter=confirm, Ctrl+R=rescan):" `
 			--header-first `
-			--expect="ctrl-r"
+			--expect="ctrl-r" `
+			--bind="enter:ignore" `
+			--bind="ctrl-j:accept"
 
 		$lines    = @($output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
 		$key      = if ($lines.Count -ge 2) { $lines[0] } else { "" }
@@ -449,7 +455,7 @@ $mode = @("FullBuild", "Build", "QuickBuild") | fzf `
 
 if (-not $mode) { exit 0 }
 
-$pArgs = ($buildDirs | ForEach-Object { "-p `"$_`"" }) -join " "
-$cmd = "qgl build -m $mode --skip-network-check $pArgs"
+$pathArgs = ($buildDirs | ForEach-Object { "`"$_`"" }) -join " "
+$cmd = "qgl build -m $mode --skip-network-check $pathArgs"
 Write-Host $cmd -ForegroundColor DarkGray
 Invoke-Expression $cmd
