@@ -98,9 +98,24 @@ function Apply-GitUser {
 				# Tell GCM which account to use — this is what actually prevents the picker
 				git -C $RepoPath config --local 'credential.https://github.com.username' $githubUser
 
+				# Route github.com credential lookups through gh's keyring-backed token store.
+				# The empty-value entry resets the inherited helper list (GCM) for github.com URLs,
+				# so gh becomes the sole helper and GCM never runs its browser refresh flow here.
+				$ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+				if ($ghCmd) {
+					$ErrorActionPreference = "Continue"
+					git -C $RepoPath config --local --unset-all 'credential.https://github.com.helper' 2>$null
+					$ErrorActionPreference = "Stop"
+					git -C $RepoPath config --local --add 'credential.https://github.com.helper' ''
+					git -C $RepoPath config --local --add 'credential.https://github.com.helper' '!gh auth git-credential'
+					Write-Host "  Credential helper: gh (user $githubUser)" -ForegroundColor DarkGray
+				} else {
+					Write-Host "  gh CLI not found — leaving GCM as credential helper" -ForegroundColor DarkYellow
+				}
+
 				# Also embed in remote URL as a secondary hint
 				$currentUrl = (git -C $RepoPath remote get-url origin 2>$null)?.Trim()
-				if ($currentUrl -match '^https://github\.com/') {
+				if ($currentUrl -match '^https://(?:[^@]+@)?github\.com/') {
 					$newUrl = "https://$githubUser@github.com/" + ($currentUrl -replace '^https://(?:[^@]+@)?github\.com/', '')
 					git -C $RepoPath remote set-url origin $newUrl
 				}
