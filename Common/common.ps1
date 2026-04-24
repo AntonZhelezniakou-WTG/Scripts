@@ -28,6 +28,7 @@ function Invoke-PrCreate {
 	$branch = git rev-parse --abbrev-ref HEAD 2>$null
 	$ErrorActionPreference = "Stop"
 	if (-not $branch -or $branch -eq 'HEAD') { return }
+	if ($branch -in @('main', 'master')) { return }
 
 	$ErrorActionPreference = "Continue"
 	$prJson = gh pr view --json number,url 2>$null
