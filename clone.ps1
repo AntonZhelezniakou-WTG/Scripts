@@ -130,4 +130,11 @@ if ($CdFile) {
 
 # Apply .gituser settings if found in parent hierarchy
 Apply-GitUser $fullPath
+
+# Rename current Windows Terminal tab to the repo name
+if ($env:WT_SESSION) {
+	$repoName = ($Url -replace "\.git/?$", "" -replace "/+$", "" -split "[/:]")[-1]
+	[Console]::Write("`e]0;$repoName`a")
+}
+
 exit 0
