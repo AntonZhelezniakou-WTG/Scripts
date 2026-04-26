@@ -4,8 +4,9 @@
     "CargoWise.Shared"
   ],
   "wisetechglobal": [
-    "Tools.CWSync",
     "DevTools",
+    "MDM.InternalTools",
+    "Tools.CWSync",
     "CargoWise.Database",
     "CargoWise.Shared"
   ],
@@ -14,9 +15,9 @@
   ],
   "alias:personal": [
     "WiseTechGlobal\\Personal\\Scripts",
+    "Personal\\Work-scripts",
     "Personal\\developer-console",
     "WiseTechGlobal\\Personal\\Diff-builder",
-    "Personal\\Work-scripts",
     "WiseTechGlobal\\Personal\\vhdx-cow"
   ]
 }
