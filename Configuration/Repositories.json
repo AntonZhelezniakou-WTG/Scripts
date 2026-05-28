@@ -1,11 +1,11 @@
 ﻿[
     {
-        "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Shared",
+        "Path":  "D:\\GitHub\\WiseTechGlobal\\CargoWise.Shared",
         "Name":  "WiseTechGlobal/CargoWise.Shared",
         "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Shared"
     },
     {
-        "Path":  "C:\\git\\GitHub\\WiseTechGlobal\\CargoWise.Database",
+        "Path":  "D:\\GitHub\\WiseTechGlobal\\CargoWise.Database",
         "Name":  "WiseTechGlobal/CargoWise.Database",
         "Remote":  "https://github.com/WiseTechGlobal/CargoWise.Database"
     },

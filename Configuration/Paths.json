@@ -1,15 +1,15 @@
 {
-	"githubBase": "C:\\git\\GitHub",
+	"githubBase": "D:\\GitHub",
 	"worktreeBase": "D:\\wt",
 	"defaultOwner": "WiseTechGlobal",
 	"ownerAliases": [
 		{
-			"localPath": "C:\\git\\GitHub\\WiseTechGlobal\\Personal",
+			"localPath": "D:\\GitHub\\WiseTechGlobal\\Personal",
 			"githubOwner": "AntonZhelezniakou-WTG",
 			"alias": "Personal"
 		},
 		{
-			"localPath": "C:\\git\\GitHub\\Personal",
+			"localPath": "D:\\GitHub\\Personal",
 			"githubOwner": "ZelAnton",
 			"alias": "Personal"
 		}

@@ -175,7 +175,7 @@ function Find-SiblingRepo {
 function Open-SiblingRepo {
 	param([string]$RepoPath, [string]$Label)
 	if ($env:WT_SESSION) {
-		wt --window 0 new-tab --title $Label --startingDirectory $RepoPath
+		wt --window 0 new-tab --title $Label --startingDirectory $RepoPath pwsh -NoLogo
 		Write-Host "Opened tab: $RepoPath" -ForegroundColor Cyan
 	} else {
 		Write-Host "Found: $RepoPath" -ForegroundColor Cyan
@@ -215,17 +215,15 @@ if ($Branch) {
 		$wtPath = Get-ExistingWtPath $Branch
 		if ($env:WT_SESSION) {
 			$safeLabel = $Branch -replace "/", "_"
-			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.ps1"
 			@"
-@echo off
-cd /d "$wtPath"
-git fetch origin "${Branch}:refs/remotes/origin/${Branch}"
-echo.
-echo == Worktree: $Branch ==
-echo.
-cmd /k
-"@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $Branch --startingDirectory $wtPath cmd /k $tabScript
+Set-Location -LiteralPath '$wtPath'
+git fetch origin '${Branch}:refs/remotes/origin/${Branch}'
+Write-Host ''
+Write-Host '== Worktree: $Branch =='
+Write-Host ''
+"@ | Set-Content $tabScript -Encoding UTF8
+			wt --window 0 new-tab --title $Branch --startingDirectory $wtPath pwsh -NoLogo -NoExit -File $tabScript
 			Write-Host "Opened WT tab for worktree: $Branch" -ForegroundColor Cyan
 		} else {
 			Ensure-FetchRefspec $Branch
@@ -272,21 +270,20 @@ cmd /k
 		$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
 		if ($env:WT_SESSION) {
 			$safeLabel = $Branch -replace "/", "_"
-			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.ps1"
 			$wtPathStr = $wt.WtPath
 			$repoRoot  = $wt.RepoRoot
 			@"
-@echo off
-git worktree add --track -b "$Branch" "$wtPathStr" "origin/$Branch"
-if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
+git worktree add --track -b '$Branch' '$wtPathStr' 'origin/$Branch'
+if (`$LASTEXITCODE -ne 0) { Write-Host 'git worktree add failed.' -ForegroundColor Red; Read-Host 'Press Enter to exit'; exit 1 }
 $copyGhLine
-cd /d "$wtPathStr"
-echo.
-echo == Changes relative to master ==
-echo.
+Set-Location -LiteralPath '$wtPathStr'
+Write-Host ''
+Write-Host '== Changes relative to master =='
+Write-Host ''
 changes
-"@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $Branch --startingDirectory $repoRoot cmd /k $tabScript
+"@ | Set-Content $tabScript -Encoding UTF8
+			wt --window 0 new-tab --title $Branch --startingDirectory $repoRoot pwsh -NoLogo -NoExit -File $tabScript
 		} else {
 			git worktree add --track -b $Branch $wt.WtPath "origin/$Branch"
 			Copy-GitHubFolder $wt.RepoRoot $wt.WtPath
@@ -472,17 +469,15 @@ while ($true) {
 		$wtPath = Get-ExistingWtPath $branchSelected
 		if ($env:WT_SESSION) {
 			$safeLabel = $branchSelected -replace "/", "_"
-			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.ps1"
 			@"
-@echo off
-cd /d "$wtPath"
-git fetch origin "${branchSelected}:refs/remotes/origin/${branchSelected}"
-echo.
-echo == Worktree: $branchSelected ==
-echo.
-cmd /k
-"@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $branchSelected --startingDirectory $wtPath cmd /k $tabScript
+Set-Location -LiteralPath '$wtPath'
+git fetch origin '${branchSelected}:refs/remotes/origin/${branchSelected}'
+Write-Host ''
+Write-Host '== Worktree: $branchSelected =='
+Write-Host ''
+"@ | Set-Content $tabScript -Encoding UTF8
+			wt --window 0 new-tab --title $branchSelected --startingDirectory $wtPath pwsh -NoLogo -NoExit -File $tabScript
 			Write-Host "Opened WT tab for worktree: $branchSelected" -ForegroundColor Cyan
 		} else {
 			Ensure-FetchRefspec $branchSelected
@@ -533,21 +528,20 @@ cmd /k
 		$copyGhLine = Get-CopyGitHubLine $wt.RepoRoot $wt.WtPath
 		if ($env:WT_SESSION) {
 			$safeLabel = $branchSelected -replace "/", "_"
-			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+			$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.ps1"
 			$wtPathStr = $wt.WtPath
 			$repoRoot  = $wt.RepoRoot
 			@"
-@echo off
-git worktree add --track -b "$branchSelected" "$wtPathStr" "origin/$branchSelected"
-if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
+git worktree add --track -b '$branchSelected' '$wtPathStr' 'origin/$branchSelected'
+if (`$LASTEXITCODE -ne 0) { Write-Host 'git worktree add failed.' -ForegroundColor Red; Read-Host 'Press Enter to exit'; exit 1 }
 $copyGhLine
-cd /d "$wtPathStr"
-echo.
-echo == Changes relative to master ==
-echo.
+Set-Location -LiteralPath '$wtPathStr'
+Write-Host ''
+Write-Host '== Changes relative to master =='
+Write-Host ''
 changes
-"@ | Set-Content $tabScript -Encoding ASCII
-			wt --window 0 new-tab --title $branchSelected --startingDirectory $repoRoot cmd /k $tabScript
+"@ | Set-Content $tabScript -Encoding UTF8
+			wt --window 0 new-tab --title $branchSelected --startingDirectory $repoRoot pwsh -NoLogo -NoExit -File $tabScript
 		} else {
 			git worktree add --track -b $branchSelected $wt.WtPath "origin/$branchSelected"
 			Copy-GitHubFolder $wt.RepoRoot $wt.WtPath

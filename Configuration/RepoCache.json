@@ -218,5 +218,29 @@
       "AvaloniaTest",
       "PL-helpers"
     ]
+  },
+  "ZelAnton": {
+    "repos": [
+      "ghRun",
+      "ConsoleKit",
+      "jjRun",
+      "ProcessKit",
+      "ProcessGroup",
+      "Devkit",
+      "vhdx-manager",
+      "agent-workspace",
+      "Work-scripts",
+      "developer-console",
+      "DriftBoard",
+      "Git-Extensions",
+      "Advent-of-code",
+      "Advent-of-code-2024",
+      "GitManager",
+      "Code",
+      "Contract.Validation",
+      "ServiceDeskBot",
+      "Basic.Contracts"
+    ],
+    "cachedAt": "2026-05-22T14:37:13.5608233+02:00"
   }
 }

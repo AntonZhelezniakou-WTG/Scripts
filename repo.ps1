@@ -220,7 +220,7 @@ if (-not $Param1 -or $_folderAliasName) {
 
 		Save-RecentRepo $aliasContext $selected
 		if ($env:WT_SESSION) {
-			wt --window 0 new-tab --title $entry.RepoName --startingDirectory $entry.FullPath cmd /k
+			wt --window 0 new-tab --title $entry.RepoName --startingDirectory $entry.FullPath pwsh -NoLogo
 		}
 		exit 0
 	}
@@ -283,7 +283,7 @@ if (-not $Param1 -or $_folderAliasName) {
 				if ($LASTEXITCODE -eq 0) {
 					Save-RecentRepo $context $repoName
 					if ($env:WT_SESSION) {
-						wt --window 0 new-tab --title $repoName --startingDirectory $targetDir cmd /k
+						wt --window 0 new-tab --title $repoName --startingDirectory $targetDir pwsh -NoLogo
 					}
 				}
 			}
@@ -299,7 +299,7 @@ if (-not $Param1 -or $_folderAliasName) {
 
 		Save-RecentRepo $context $selected
 		if ($env:WT_SESSION) {
-			wt --window 0 new-tab --title $selected --startingDirectory $targetPath cmd /k
+			wt --window 0 new-tab --title $selected --startingDirectory $targetPath pwsh -NoLogo
 		}
 		exit 0
 	}
@@ -313,16 +313,22 @@ $branch      = $null
 
 if ($aliases.Contains($Param1)) {
 	$aliasFolder = $aliases[$Param1]
-	if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
-	$verb = if ($env:WT_SESSION) { "Opening" } else { "Switching to" }
-	Write-Host "$verb repo: $aliasFolder"
+	if (-not (Test-Path $aliasFolder)) {
+		Write-Host "Path not found: $aliasFolder" -ForegroundColor Red
+		exit 1
+	}
 
 	if ($Param2) {
+		if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
+		Write-Host "Switching to repo: $aliasFolder"
 		$branch = $Param2
 	} else {
 		if ($env:WT_SESSION) {
-			wt --window 0 new-tab --title $Param1 --startingDirectory $aliasFolder cmd /k "git symbolic-ref --short HEAD"
+			Write-Host "Opening repo: $aliasFolder"
+			wt --window 0 new-tab --title $Param1 --startingDirectory $aliasFolder pwsh -NoLogo -NoExit -Command "git symbolic-ref --short HEAD"
 		} else {
+			if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
+			Write-Host "Switching to repo: $aliasFolder"
 			Show-ActiveBranch
 		}
 		exit 0
@@ -335,17 +341,18 @@ if ($aliases.Contains($Param1)) {
 if (-not $aliasFolder) {
 	if ([System.IO.Path]::IsPathRooted($Param1) -and (Test-Path $Param1)) {
 		# Absolute path
-		if (-not (Set-LocationSafe $Param1)) { exit 1 }
-		$verb = if ($env:WT_SESSION) { "Opening" } else { "Switching to" }
-		Write-Host "${verb}: $Param1"
-
 		if ($Param2) {
+			if (-not (Set-LocationSafe $Param1)) { exit 1 }
+			Write-Host "Switching to: $Param1"
 			$branch = $Param2
 		} else {
 			$folderTitle = Split-Path $Param1 -Leaf
 			if ($env:WT_SESSION) {
-				wt --window 0 new-tab --title $folderTitle --startingDirectory (Get-Location).Path cmd /k "git symbolic-ref --short HEAD"
+				Write-Host "Opening: $Param1"
+				wt --window 0 new-tab --title $folderTitle --startingDirectory $Param1 pwsh -NoLogo -NoExit -Command "git symbolic-ref --short HEAD"
 			} else {
+				if (-not (Set-LocationSafe $Param1)) { exit 1 }
+				Write-Host "Switching to: $Param1"
 				Show-ActiveBranch
 			}
 			exit 0
@@ -367,18 +374,20 @@ if (-not $aliasFolder) {
 
 		if ($resolvedName) {
 			$aliasFolder = $candidatePath
-			if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
 			Save-RecentRepo $ctx.Context $resolvedName
-			$verb = if ($env:WT_SESSION) { "Opening" } else { "Switching to" }
-			Write-Host "$verb repo: $aliasFolder"
 
 			if ($Param2) {
+				if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
+				Write-Host "Switching to repo: $aliasFolder"
 				$branch = $Param2
 			} else {
 				$tabTitle = $resolvedName
 				if ($env:WT_SESSION) {
-					wt --window 0 new-tab --title $tabTitle --startingDirectory $aliasFolder cmd /k "git symbolic-ref --short HEAD"
+					Write-Host "Opening repo: $aliasFolder"
+					wt --window 0 new-tab --title $tabTitle --startingDirectory $aliasFolder pwsh -NoLogo -NoExit -Command "git symbolic-ref --short HEAD"
 				} else {
+					if (-not (Set-LocationSafe $aliasFolder)) { exit 1 }
+					Write-Host "Switching to repo: $aliasFolder"
 					Show-ActiveBranch
 				}
 				exit 0
@@ -419,12 +428,14 @@ if (-not $aliasFolder) {
 					}
 					Save-RecentRepo $ctx.Context $remoteRepoName
 					$aliasFolder = $targetDir
-					Set-Location $targetDir
 					if ($Param2) {
+						Set-Location $targetDir
 						$branch = $Param2
 					} else {
 						if ($env:WT_SESSION) {
-							wt --window 0 new-tab --title $remoteRepoName --startingDirectory $targetDir cmd /k
+							wt --window 0 new-tab --title $remoteRepoName --startingDirectory $targetDir pwsh -NoLogo
+						} else {
+							Set-Location $targetDir
 						}
 						exit 0
 					}
@@ -525,6 +536,6 @@ if ($aliasFolder) {
 }
 
 if ($env:WT_SESSION) {
-	wt --window 0 new-tab --title $tabTitle --startingDirectory $targetDir cmd /k
+	wt --window 0 new-tab --title $tabTitle --startingDirectory $targetDir pwsh -NoLogo
 }
 exit 0

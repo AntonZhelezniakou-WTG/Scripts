@@ -1,12 +1,26 @@
 param(
-	[string]$WorkDir,
-	[string]$BranchName
+	[string]$BranchName,
+	[string]$WorkDir
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
-if ($WorkDir) { Set-Location $WorkDir }
+# Backward compatibility for old positional order: create.ps1 <workdir> <branch>
+if ($BranchName -and $WorkDir -and (Test-Path -LiteralPath $BranchName -PathType Container) -and -not (Test-Path -LiteralPath $WorkDir -PathType Container)) {
+	$tmp = $BranchName
+	$BranchName = $WorkDir
+	$WorkDir = $tmp
+}
+
+if ($WorkDir) {
+	if (-not (Test-Path -LiteralPath $WorkDir -PathType Container)) {
+		Write-Host "Error: WorkDir does not exist: $WorkDir" -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+	Set-Location $WorkDir
+}
 
 # --- Validate repo ---
 git rev-parse --is-inside-work-tree 2>&1 | Out-Null
@@ -87,22 +101,21 @@ if ($useWorktree) {
 
 	if ($env:WT_SESSION) {
 		$safeLabel = $BranchName -replace "/", "_"
-		$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.cmd"
+		$tabScript = Join-Path $env:TEMP "git-wt-tab-${safeLabel}.ps1"
 		$wtPathStr = $wt.WtPath
 		$repoRoot  = $wt.RepoRoot
 		@"
-@echo off
-cd /d "$repoRoot"
-git worktree add -b "$BranchName" "$wtPathStr"
-if errorlevel 1 ( echo git worktree add failed. & pause & exit /b 1 )
+Set-Location -LiteralPath '$repoRoot'
+git worktree add -b '$BranchName' '$wtPathStr'
+if (`$LASTEXITCODE -ne 0) { Write-Host 'git worktree add failed.' -ForegroundColor Red; Read-Host 'Press Enter to exit'; exit 1 }
 $copyGhLine
-cd /d "$wtPathStr"
-choice /C YN /M "Push '$BranchName' to origin?"
-if errorlevel 2 goto :skip_push
-git push -u origin "$BranchName"
-:skip_push
-"@ | Set-Content $tabScript -Encoding ASCII
-		wt --window 0 new-tab --title $BranchName --startingDirectory $repoRoot cmd /k $tabScript
+Set-Location -LiteralPath '$wtPathStr'
+Write-Host -NoNewline "Push '$BranchName' to origin? [Y/n] " -ForegroundColor Cyan
+`$key = [Console]::ReadKey(`$true)
+Write-Host `$key.KeyChar
+if (`$key.Key -eq 'Enter' -or `$key.KeyChar -match '^[Yy]$') { git push -u origin '$BranchName' }
+"@ | Set-Content $tabScript -Encoding UTF8
+		wt --window 0 new-tab --title $BranchName --startingDirectory $repoRoot pwsh -NoLogo -NoExit -File $tabScript
 		Write-Host "Opened WT tab for new worktree: $BranchName" -ForegroundColor Cyan
 		exit 0
 	}

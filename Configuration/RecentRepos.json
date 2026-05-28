@@ -4,10 +4,10 @@
     "CargoWise.Shared"
   ],
   "wisetechglobal": [
+    "CargoWise.Database",
     "DevTools",
     "MDM.InternalTools",
     "Tools.CWSync",
-    "CargoWise.Database",
     "CargoWise.Shared"
   ],
   "antonzhelezniakou-wtg": [
@@ -16,8 +16,16 @@
   "alias:personal": [
     "WiseTechGlobal\\Personal\\Scripts",
     "Personal\\Work-scripts",
-    "Personal\\developer-console",
-    "WiseTechGlobal\\Personal\\Diff-builder",
-    "WiseTechGlobal\\Personal\\vhdx-cow"
+    "Personal\\agent-workspace",
+    "Personal\\claude-plugins",
+    "Personal\\ghRun",
+    "WiseTechGlobal\\Personal\\ProcessGroup",
+    "Personal\\ConsoleKit",
+    "Personal\\jjRun",
+    "WiseTechGlobal\\Personal\\git-run",
+    "WiseTechGlobal\\Personal\\vhdx-manager"
+  ],
+  "zelanton": [
+    "Work-scripts"
   ]
 }
