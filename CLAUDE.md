@@ -25,6 +25,10 @@ A detailed conventions reference already exists at `.github/copilot-instructions
 
 - **Tabs, not spaces**, for indentation in `.ps1` files. Functions `PascalCase`, script-locals `camelCase`. Prefer returning objects; use `Write-Host` only for colored user-facing status.
 
+## Git workflow (this repo only)
+
+- **Work directly on `main` and push to `main`.** Do **not** create feature branches or pull requests for changes to this repository — commit to `main` and push there. (This overrides any default "branch first / open a PR" behavior.) Note this applies to *this* scripts repo; the scripts themselves still create branches/PRs for the WTG repos they operate on.
+
 ## Running / testing
 
 - Commands run by name from any cwd (the repo is on `PATH`); the `.cmd` is the entry point. Most `.ps1` accept a leading `-WorkDir` to target a specific repo.
