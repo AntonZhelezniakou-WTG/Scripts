@@ -123,7 +123,9 @@ if ($isEmptyRepo) {
 
 $fullPath = (Resolve-Path $Directory).Path
 
-# Signal cmd wrapper to cd into the cloned directory (write before Apply-GitUser so it always happens)
+# Signal the caller's wrapper (clone.cmd or the PS clone function) to cd into the
+# cloned directory in the caller's own session. Written before Apply-GitUser so
+# the cd always happens even if .gituser handling later fails.
 if ($CdFile) {
 	[System.IO.File]::WriteAllText($CdFile, $fullPath, [System.Text.Encoding]::ASCII)
 }
@@ -131,7 +133,7 @@ if ($CdFile) {
 # Apply .gituser settings if found in parent hierarchy
 Apply-GitUser $fullPath
 
-# Rename current Windows Terminal tab to the repo name
+# Rename the current Windows Terminal tab to the repo name
 if ($env:WT_SESSION) {
 	$repoName = ($Url -replace "\.git/?$", "" -replace "/+$", "" -split "[/:]")[-1]
 	[Console]::Write("`e]0;$repoName`a")

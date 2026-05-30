@@ -4,10 +4,10 @@
     "CargoWise.Shared"
   ],
   "wisetechglobal": [
+    "Tools.CWSync",
     "CargoWise.Database",
     "DevTools",
     "MDM.InternalTools",
-    "Tools.CWSync",
     "CargoWise.Shared"
   ],
   "antonzhelezniakou-wtg": [

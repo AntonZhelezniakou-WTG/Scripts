@@ -1,12 +1,16 @@
 param(
-	[string]$WorkDir,
-	[switch]$Force
+	[string]$Base,
+	[switch]$Force,
+	[string]$WorkDir
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
-if ($WorkDir) { Set-Location $WorkDir }
+# When launched from PowerShell the cwd is already the repo, so $WorkDir is only
+# passed by the .cmd shim (from cmd.exe). Ignore it if it isn't an existing path
+# so a stray first positional argument can't break the cd.
+if ($WorkDir -and (Test-Path -LiteralPath $WorkDir -PathType Container)) { Set-Location $WorkDir }
 
 git rev-parse --is-inside-work-tree 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -28,26 +32,62 @@ if ($currentBranch -eq "master" -or $currentBranch -eq "main") {
 	exit 0
 }
 
-$baseBranch = Get-BaseBranch
+# Base branch to pull and merge: explicit argument, else local master/main.
+if ($Base) {
+	$baseBranch = $Base
+} else {
+	$baseBranch = Get-BaseBranch
+	if (-not $baseBranch) {
+		Write-Host "Error: neither 'master' nor 'main' found locally." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+}
 
-if (-not $baseBranch) {
-	Write-Host "Error: neither 'master' nor 'main' found locally." -ForegroundColor Red
+if ($baseBranch -eq $currentBranch) {
+	Write-Host "'$baseBranch' is the current branch. Nothing to merge." -ForegroundColor Yellow
 	Wait-AnyKey
-	exit 1
+	exit 0
 }
 
 if (-not $Force) {
-	if (-not (Confirm-Action "Merge '$baseBranch' into '$currentBranch'?")) {
+	if (-not (Confirm-Action "Pull '$baseBranch' from origin and merge into '$currentBranch'?")) {
 		Write-Host "Cancelled." -ForegroundColor Yellow
 		exit 0
 	}
 }
 
+# Fetch the latest base from origin. Use the repo's per-branch refspec helpers so
+# that origin/<base> is updated even in single-branch clones (a plain
+# `git fetch origin <base>` would only move FETCH_HEAD there).
 Write-Host ""
-Write-Host "== Merging '$baseBranch' into '$currentBranch' ==" -ForegroundColor Cyan
+Write-Host "== Updating '$baseBranch' from origin ==" -ForegroundColor DarkGray
+Ensure-FetchRefspec $baseBranch
+Fetch-Branch $baseBranch
+
+# Decide what to merge: prefer the freshly-fetched origin ref, fall back to a
+# local branch of the same name, otherwise there is nothing to merge.
+$ErrorActionPreference = "Continue"
+$hasOrigin = [bool](git rev-parse --verify --quiet "refs/remotes/origin/$baseBranch" 2>$null)
+$hasLocal  = [bool](git rev-parse --verify --quiet "refs/heads/$baseBranch" 2>$null)
+$ErrorActionPreference = "Stop"
+
+if ($hasOrigin) {
+	$mergeRef = "origin/$baseBranch"
+} elseif ($hasLocal) {
+	$mergeRef = $baseBranch
+	Write-Host "Warning: '$baseBranch' not found on origin; merging local copy." -ForegroundColor Yellow
+} else {
+	Write-Host "Error: branch '$baseBranch' not found locally or on origin." -ForegroundColor Red
+	Wait-AnyKey
+	exit 1
+}
+
+Write-Host ""
+Write-Host "== Merging '$mergeRef' into '$currentBranch' ==" -ForegroundColor Cyan
 
 $ErrorActionPreference = "Continue"
-git merge $baseBranch --no-edit --quiet --no-stat
+git merge $mergeRef --no-edit --quiet --no-stat
 $mergeExit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 
@@ -56,7 +96,20 @@ if ($mergeExit -eq 0) {
 	exit 0
 }
 
+# A non-zero exit means either real conflicts or a plain failure (e.g. a dirty
+# working tree that git refused to overwrite). Only launch the conflict resolver
+# when there are genuinely unmerged paths; otherwise report git's own message.
+$ErrorActionPreference = "Continue"
+$unmerged = @(git diff --name-only --diff-filter=U 2>$null)
+$ErrorActionPreference = "Stop"
+
+if ($unmerged.Count -eq 0) {
+	Write-Host "Merge failed (see the message above). Nothing was changed." -ForegroundColor Red
+	Wait-AnyKey
+	exit $mergeExit
+}
+
+$conflictFiles = $unmerged -join ", "
 $conflictsScript = Join-Path $PSScriptRoot "conflicts.ps1"
-$conflictFiles = (git diff --name-only --diff-filter=U 2>$null) -join ", "
 & $conflictsScript -AbortCommand "merge --abort" -CommitMessage "Merged $baseBranch. Conflicts resolved in: $conflictFiles"
 exit $LASTEXITCODE
