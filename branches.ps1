@@ -10,8 +10,63 @@ $UP   = [char]0x2191  # ↑
 $DOWN = [char]0x2193  # ↓
 $EQ   = [char]0x2261  # ≡
 
+# Parse a (possibly "dirty") GitHub PR URL or a bare #number and resolve it to the PR's
+# head branch in the CURRENT repo. Returns the branch name, or $null on any problem.
+# Handles trailing junk like ".../pull/50428/changes#diff-abc123".
+function Resolve-PrInput {
+	param([string]$Raw)
+
+	$owner = $null; $repo = $null; $num = $null
+	if ($Raw -match 'github\.com/([^/]+)/([^/]+)/pull/(\d+)') {
+		$owner = $Matches[1]; $repo = $Matches[2]; $num = $Matches[3]
+	} elseif ($Raw -match '^#?(\d+)$') {
+		$num = $Matches[1]
+	} else {
+		Write-Host "Not a GitHub PR URL or number: $Raw" -ForegroundColor Red
+		Wait-AnyKey
+		return $null
+	}
+
+	# Current repo slug (same parse as Get-WtPath in common.ps1).
+	$ErrorActionPreference = "Continue"
+	$remoteUrl = git remote get-url origin 2>$null
+	$ErrorActionPreference = "Stop"
+	$currentSlug = if ($remoteUrl -match 'github\.com[/:](.+?)(?:\.git)?\s*$') { $Matches[1].Trim() } else { $null }
+
+	# Only the current repo is supported — warn if the URL points elsewhere.
+	if ($owner -and $repo -and $currentSlug -and "$owner/$repo" -ine $currentSlug) {
+		Write-Host "PR $owner/$repo#$num is in another repo (you're in $currentSlug)." -ForegroundColor Yellow
+		Write-Host "Open that repo first, then use '+' there." -ForegroundColor Yellow
+		Wait-AnyKey
+		return $null
+	}
+
+	Write-Host "Resolving PR #$num..." -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	$repoArgs = if ($owner -and $repo) { @("--repo", "$owner/$repo") } else { @() }
+	$json = gh pr view $num @repoArgs --json number,title,headRefName,state,isCrossRepository 2>$null | ConvertFrom-Json
+	$ErrorActionPreference = "Stop"
+
+	if (-not $json) {
+		Write-Host "PR #$num not found (or gh not authenticated)." -ForegroundColor Red
+		Wait-AnyKey
+		return $null
+	}
+	if ($json.isCrossRepository) {
+		# Head branch lives on a fork, not on origin — the checkout flow below can't reach it.
+		Write-Host "PR #$num comes from a fork; its branch isn't on origin. Not supported." -ForegroundColor Yellow
+		Wait-AnyKey
+		return $null
+	}
+	if ($json.state -ne "OPEN") {
+		Write-Host "Note: PR #$num is $($json.state)." -ForegroundColor DarkYellow
+	}
+	return $json.headRefName
+}
+
 # Show a fzf menu of the current user's open PRs (authored, assigned, review-requested).
-# Returns the branch name of the selected PR, or $null if cancelled.
+# Lets the user select a PR, or paste an arbitrary GitHub PR URL / #number to open it.
+# Returns the branch name to act on, or $null if cancelled.
 function Select-PR {
 	if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
 		Write-Host "GitHub CLI (gh) is not installed. Install it from https://cli.github.com" -ForegroundColor Red
@@ -32,33 +87,47 @@ function Select-PR {
 		Group-Object number |
 		ForEach-Object { $_.Group[0] }
 
-	if (-not $allPRs) {
-		Write-Host "No open PRs found." -ForegroundColor Yellow
-		Wait-AnyKey
-		return $null
+	$menuEntries = @()
+	if ($allPRs) {
+		$maxNumLen = ($allPRs | ForEach-Object { "#$($_.number)".Length } | Measure-Object -Maximum).Maximum
+		$menuEntries = $allPRs | ForEach-Object {
+			$num      = "#$($_.number)".PadRight($maxNumLen)
+			$status   = if ($_.isDraft) { "[draft]" } else { "[open] " }
+			$comments = if ($_.comments.totalCount -gt 0) { "($($_.comments.totalCount) comments)" } else { "              " }
+			"$num  $status  $comments  $($_.title)"
+		}
 	}
 
-	$maxNumLen = ($allPRs | ForEach-Object { "#$($_.number)".Length } | Measure-Object -Maximum).Maximum
-
-	$menuEntries = $allPRs | ForEach-Object {
-		$num      = "#$($_.number)".PadRight($maxNumLen)
-		$status   = if ($_.isDraft) { "[draft]" } else { "[open] " }
-		$comments = if ($_.comments.totalCount -gt 0) { "($($_.comments.totalCount) comments)" } else { "              " }
-		"$num  $status  $comments  $($_.title)"
+	$header = if ($allPRs) {
+		"Select a PR (Enter), or paste a GitHub PR URL / #number, then Enter (Esc=cancel):"
+	} else {
+		"No PRs of yours. Paste a GitHub PR URL / #number, then Enter (Esc=cancel):"
 	}
 
-	$selected = $menuEntries | fzf `
-		--style=minimal --no-input --disabled --height=50% --no-info --layout=reverse `
+	# --print-query lets the user type a PR URL/number even when it matches no list entry.
+	$out = $menuEntries | fzf `
+		--print-query `
+		--style=minimal --height=50% --no-info --layout=reverse `
 		--pointer=">" --gutter=" " `
 		--color="pointer:green,fg+:green:bold,bg+:-1" `
-		--header="Select PR (Enter to checkout):" `
+		--header=$header `
 		--header-first
+	$code = $LASTEXITCODE
 
-	if (-not $selected) { return $null }
+	# 130 = Esc/Ctrl-C -> cancel; 0 = a list entry was selected; 1 = query typed with no match.
+	if ($code -eq 130) { return $null }
 
-	$prNum = ($selected.Trim() -split "\s+")[0] -replace "^#", ""
-	$pr    = $allPRs | Where-Object { $_.number -eq [int]$prNum } | Select-Object -First 1
-	return $pr.headRefName
+	if ($code -eq 0) {
+		$selectedLine = "$($out | Select-Object -Last 1)"
+		$prNum = ($selectedLine.Trim() -split "\s+")[0] -replace "^#", ""
+		$pr    = $allPRs | Where-Object { $_.number -eq [int]$prNum } | Select-Object -First 1
+		return $pr.headRefName
+	}
+
+	# Typed text (URL or number) — first output line is always the raw query.
+	$query = "$($out | Select-Object -First 1)".Trim()
+	if (-not $query) { return $null }
+	return (Resolve-PrInput $query)
 }
 
 # Merge $SourceBranch into current branch with conflict resolution via GitExtensions.
@@ -425,7 +494,7 @@ while ($true) {
 		--pointer=">" --gutter=" " `
 		--color="pointer:green,fg+:green:bold,bg+:-1" `
 		--ansi `
-		--header="Select branch or worktree (Del=delete, +=PRs, m=merge into current, Esc=quit):" `
+		--header="Select branch or worktree (Del=delete, +=PRs/URL, m=merge into current, Esc=quit):" `
 		--header-first `
 		--expect="del,+,esc,m"
 
