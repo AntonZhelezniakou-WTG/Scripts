@@ -67,6 +67,66 @@ function Invoke-PullCurrentIfBehind([string]$RepoPath, [string]$BranchName) {
 
 if ($WorkDir) { Set-Location $WorkDir }
 
+# ── jj backend ───────────────────────────────────────────────────────────────
+# No staging/stash dance: pull is just fetch + rebase the current change onto the
+# updated remote. main/master target rebases onto the base; otherwise onto the
+# current bookmark's own remote.
+if ((Get-VcsBackend) -eq 'jj') {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj git fetch | Out-Host
+	$ErrorActionPreference = "Stop"
+
+	if ($Target -in @('main', 'master')) {
+		$base = Get-JjBaseBookmark -Explicit $Target
+		if (-not $base) {
+			Write-Host "No base bookmark (main/master) found." -ForegroundColor Red
+			Wait-AnyKey
+			exit 1
+		}
+		$dest = "$base@origin"
+	} else {
+		$bm = Select-JjBookmarkForPush
+		if (-not $bm) {
+			Write-Host "No bookmark on the current change to pull." -ForegroundColor Yellow
+			exit 0
+		}
+		if (-not (Test-JjRevExists "$bm@origin")) {
+			Write-Host "Bookmark '$bm' has no remote on origin — nothing to pull." -ForegroundColor Yellow
+			exit 0
+		}
+		$dest = "$bm@origin"
+	}
+
+	if (-not (Test-JjRevExists $dest)) {
+		Write-Host "'$dest' not found — nothing to pull." -ForegroundColor Yellow
+		exit 0
+	}
+
+	Write-Host ""
+	Write-Host "== Rebasing current branch onto '$dest' ==" -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj rebase -b '@' -d $dest
+	$rebaseExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($rebaseExit -ne 0) {
+		Write-Host "Rebase failed (see above). Recover with 'jj op undo'." -ForegroundColor Red
+		Wait-AnyKey
+		exit $rebaseExit
+	}
+	if (Test-JjHasConflicts) {
+		Write-Host ""
+		Write-Host "Pull produced conflicts. Resolve with 'jj resolve', or undo with 'jj op undo'." -ForegroundColor Yellow
+		Wait-AnyKey
+		exit 1
+	}
+	Write-Host "Up to date." -ForegroundColor Green
+	exit 0
+}
+
 $branch = git rev-parse --abbrev-ref HEAD 2>&1
 if ($LASTEXITCODE -ne 0) {
 	Write-Host "Not a git repository." -ForegroundColor Red

@@ -2,7 +2,8 @@ param(
 	[Parameter(Mandatory)]
 	[string]$Repo,
 	[string]$Directory,
-	[string]$CdFile
+	[string]$CdFile,
+	[switch]$Jj   # after cloning, make it a colocated jj repo (jj git init --colocate)
 )
 
 $ErrorActionPreference = "Stop"
@@ -122,6 +123,22 @@ if ($isEmptyRepo) {
 }
 
 $fullPath = (Resolve-Path $Directory).Path
+
+# Optionally make the clone a colocated jj repo so the jj-aware commands take over.
+if ($Jj) {
+	Write-Host "Initializing colocated jj repo..." -ForegroundColor DarkGray
+	Push-Location $fullPath
+	$ErrorActionPreference = "Continue"
+	jj git init --colocate 2>&1 | Out-Host
+	$jjExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	Pop-Location
+	if ($jjExit -ne 0) {
+		Write-Host "Warning: 'jj git init --colocate' failed; repo remains git-only." -ForegroundColor Yellow
+	} else {
+		Write-Host "Colocated jj repo ready." -ForegroundColor Green
+	}
+}
 
 # Signal the caller's wrapper (clone.cmd or the PS clone function) to cd into the
 # cloned directory in the caller's own session. Written before Apply-GitUser so

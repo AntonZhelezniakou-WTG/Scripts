@@ -38,9 +38,10 @@ function Ensure-Micro {
 
 
 function Get-AiCommitMessage {
+	param([string]$Diff)
 	if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) { return $null }
 
-	$diff = (git diff --cached) -join "`n"
+	$diff = $Diff
 	if ($diff.Length -gt 8000) {
 		$diff = $diff.Substring(0, 8000) + "`n... (truncated)"
 	}
@@ -80,7 +81,220 @@ $diff
 	return $null
 }
 
+# Edit an AI/seed message in micro (or inline fallback). Returns trimmed text.
+function Get-EditedCommitMessage {
+	param([string]$AiMessage)
+	$tempFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.txt'
+	Set-Content $tempFile $AiMessage -Encoding UTF8
+	if (Ensure-Micro) {
+		micro $tempFile
+	} else {
+		Write-Host ""
+		Write-Host "Commit message:" -ForegroundColor Cyan
+		Write-Host $AiMessage -ForegroundColor White
+		Write-Host ""
+		Write-Host "Press Enter to keep, or type a new message: " -ForegroundColor Cyan -NoNewline
+		$userInput = [Console]::ReadLine()
+		if ($userInput.Trim()) { Set-Content $tempFile $userInput.Trim() -Encoding UTF8 }
+	}
+	$msg = (Get-Content $tempFile -Raw -Encoding UTF8).Trim()
+	Remove-Item $tempFile -ErrorAction SilentlyContinue
+	return $msg
+}
+
+# ── jj (Jujutsu) commit path ─────────────────────────────────────────────────
+#
+# No staging area: @ already holds the changes. A partial selection is realised
+# with `jj split` (selected files -> committed change @-, the rest stay in @).
+# After committing, the chosen bookmark is advanced onto the committed change.
+function Invoke-JjCommit {
+	if (-not (Ensure-Fzf)) { Wait-AnyKey; return }
+
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	if (@(jj diff --summary -r '@' 2>$null).Count -eq 0) {
+		Write-Host "No changes to commit." -ForegroundColor Yellow
+		return
+	}
+
+	# ── Interactive file review ──────────────────────────────────────────
+	$selections = $null
+	$parsed     = $null
+	while ($true) {
+		$summary = @(jj diff --summary -r '@' 2>$null)
+		if ($summary.Count -eq 0) {
+			Write-Host "No changes remaining." -ForegroundColor Yellow
+			return
+		}
+
+		$parsed     = Parse-JjStatusLines $summary
+		$fzfEntries = Build-FzfEntries $parsed
+
+		$fzfArgs = @(
+			'--multi', '--ansi', '--sync'
+			'--style=minimal', '--height=80%', '--no-info', '--layout=reverse'
+			'--pointer=>', '--gutter= ', '--marker=>'
+			'--color=pointer:green,fg+:green:bold,bg+:-1'
+			'--header=Space=toggle  -=none  +=all  Del=discard  Ctrl+Enter=confirm  Esc=cancel'
+			'--header-first'
+			"--delimiter=`t"
+			'--with-nth=1'
+			'--preview=jj diff --git -r @ -- {2}'
+			'--preview-window=right,60%,wrap'
+			'--bind=start:select-all+hide-input'
+			'--bind=space:toggle'
+			'--bind=-:deselect-all'
+			'--bind=+:select-all'
+			'--bind=enter:ignore'
+			'--bind=ctrl-j:accept'
+			'--expect=del'
+		)
+		$lines = $fzfEntries | fzf @fzfArgs
+
+		if (-not $lines) { Write-Host "Cancelled." -ForegroundColor DarkGray; return }
+
+		$keyUsed    = $lines[0].Trim()
+		$selections = @($lines | Select-Object -Skip 1 | Where-Object { $_ })
+
+		# Del — discard changes for highlighted file (jj restore reverts to @-)
+		if ($keyUsed -eq "del") {
+			if (-not $selections) { continue }
+			$filePath = Extract-PathFromFzfLine $selections[0]
+			$fileInfo = $parsed | Where-Object { $_.Path -eq $filePath } | Select-Object -First 1
+			if (-not $fileInfo) { continue }
+
+			$statusLabel = switch ($fileInfo.Status) {
+				'A' { "DELETE new file" }
+				'D' { "RESTORE deleted file" }
+				default { "DISCARD changes in" }
+			}
+
+			Write-Host ""
+			if (-not (Confirm-Action "$statusLabel '$filePath'?")) { continue }
+
+			# Renames touch two paths — restore both so the rename fully reverts.
+			$restorePaths = @($fileInfo.Path; if ($fileInfo.OldPath) { $fileInfo.OldPath })
+			$ErrorActionPreference = "Continue"
+			jj restore @restorePaths 2>$null | Out-Null
+			$ErrorActionPreference = "Stop"
+			Write-Host "Discarded: $filePath" -ForegroundColor Green
+			Start-Sleep -Milliseconds 400
+			continue
+		}
+
+		break
+	}
+
+	$selectedPaths = @($selections | ForEach-Object { Extract-PathFromFzfLine $_ })
+	$allPaths      = @($parsed | ForEach-Object { $_.Path })
+	if ($selectedPaths.Count -eq 0) {
+		Write-Host "No files selected for commit." -ForegroundColor Yellow
+		return
+	}
+	$isPartial = ($selectedPaths.Count -lt $allPaths.Count)
+
+	Write-Host ""
+	Write-Host "$($selectedPaths.Count) file(s) to commit." -ForegroundColor Cyan
+
+	# Map selection back to parsed entries; renames contribute both old and new
+	# paths so `jj split` and the diff include the full change.
+	$selectedParsed = @($parsed | Where-Object { $selectedPaths -contains $_.Path })
+	$jjPaths        = @($selectedParsed | ForEach-Object { $_.Path; if ($_.OldPath) { $_.OldPath } })
+
+	# ── Commit message ───────────────────────────────────────────────────
+	$diff = (jj diff --git -r '@' -- @jjPaths 2>$null) -join "`n"
+	$aiMessage = Get-AiCommitMessage $diff
+	if (-not $aiMessage) {
+		$aiMessage = ""
+		Write-Host "[info] AI unavailable (install copilot CLI for auto-generation)." -ForegroundColor DarkGray
+	}
+
+	$commitMessage = Get-EditedCommitMessage $aiMessage
+	if (-not $commitMessage) {
+		Write-Host "Empty commit message. Aborted." -ForegroundColor Red
+		return
+	}
+
+	Write-Host ""
+	Write-Host "Commit message:" -ForegroundColor Cyan
+	Write-Host $commitMessage -ForegroundColor White
+	Write-Host ""
+	if (-not (Confirm-Action "Commit?")) { Write-Host "Aborted." -ForegroundColor DarkGray; return }
+
+	# ── Choose bookmark BEFORE committing (selection is relative to @) ────
+	$bookmark = Select-JjBookmarkForCommit
+
+	# ── Commit ───────────────────────────────────────────────────────────
+	$ErrorActionPreference = "Continue"
+	if ($isPartial) {
+		jj split @jjPaths --message $commitMessage
+		$commitExit  = $LASTEXITCODE
+		$targetRev   = '@-'
+	} else {
+		jj describe -m $commitMessage
+		$commitExit  = $LASTEXITCODE
+		$targetRev   = '@'
+	}
+	$ErrorActionPreference = "Stop"
+
+	if ($commitExit -ne 0) {
+		Write-Host "Commit failed." -ForegroundColor Red
+		Wait-AnyKey
+		return
+	}
+
+	# Advance the chosen bookmark onto the committed change.
+	if ($bookmark) {
+		if (Set-JjBookmark -Name $bookmark -Revision $targetRev) {
+			Write-Host "Bookmark '$bookmark' -> committed change." -ForegroundColor DarkGray
+		}
+	}
+
+	# For a full commit, open a fresh empty working copy on top (git-like).
+	if (-not $isPartial) {
+		$ErrorActionPreference = "Continue"
+		jj new 2>&1 | Out-Null
+		$ErrorActionPreference = "Stop"
+	}
+
+	Write-Host "Committed." -ForegroundColor Green
+
+	# ── Offer push ───────────────────────────────────────────────────────
+	if (-not $bookmark) { return }
+	if ($bookmark -in @('main', 'master')) { return }
+
+	Write-Host ""
+	$Host.UI.RawUI.FlushInputBuffer()
+	Write-Host "Push bookmark '$bookmark'? [y/N] " -ForegroundColor Cyan -NoNewline
+	$pushKey = [Console]::ReadKey($true)
+	Write-Host $pushKey.KeyChar
+	if ($pushKey.KeyChar -notmatch '^[Yy]$') { Write-Host "Push skipped." -ForegroundColor DarkGray; return }
+
+	Write-Host ""
+	Write-Host "Pushing bookmark '$bookmark'..." -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj git push -b $bookmark
+	$pushExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($pushExit -ne 0) {
+		Write-Host "Push failed." -ForegroundColor Red
+		return
+	}
+	Write-Host "Pushed." -ForegroundColor Green
+
+	Invoke-JjPrCreate -Bookmark $bookmark
+}
+
 # ── Validate ────────────────────────────────────────────────────────────────
+
+$script:VcsBackend = Get-VcsBackend
+if (-not $script:VcsBackend) {
+	Write-Host "Not a repository." -ForegroundColor Red
+	Wait-AnyKey
+	exit 1
+}
+if ($script:VcsBackend -eq 'jj') { Invoke-JjCommit; exit 0 }
 
 git rev-parse --is-inside-work-tree 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -204,7 +418,7 @@ Write-Host "$($staged.Count) file(s) staged." -ForegroundColor Cyan
 
 # ── Phase 3: Generate commit message ────────────────────────────────────────
 
-$aiMessage = Get-AiCommitMessage
+$aiMessage = Get-AiCommitMessage ((git diff --cached) -join "`n")
 if (-not $aiMessage) {
 	$aiMessage = ""
 	Write-Host "[info] AI unavailable (install copilot CLI for auto-generation)." -ForegroundColor DarkGray

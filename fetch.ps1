@@ -3,9 +3,27 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Common\common.ps1")
 
 if ($WorkDir) {
 	Set-Location $WorkDir
+}
+
+# ── jj backend ───────────────────────────────────────────────────────────────
+if ((Get-VcsBackend) -eq 'jj') {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+	Write-Host "== Fetching all remote bookmarks (jj git fetch) ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj git fetch
+	$exit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($exit -ne 0) {
+		Write-Host "Fetch failed." -ForegroundColor Red
+		exit 1
+	}
+	Write-Host "Done"
+	exit 0
 }
 
 # Verify we're inside a git repository

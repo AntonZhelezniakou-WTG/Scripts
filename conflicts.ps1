@@ -25,6 +25,25 @@ function Wait-AnyKey {
 	$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
+# jj repos resolve conflicts with `jj resolve`; the git merge/stash abort flow
+# below does not apply. (Detected inline so this stays self-contained.)
+$jjDir = (Get-Location).Path
+while ($jjDir) {
+	if (Test-Path (Join-Path $jjDir ".jj")) {
+		$conflicted = @(jj log --no-graph -r 'conflicts()' -T 'change_id.short() ++ "\n"' 2>$null | Where-Object { $_ -and $_.Trim() })
+		if ($conflicted.Count -eq 0) {
+			Write-Host "No conflicts." -ForegroundColor Green
+			exit 0
+		}
+		Write-Host "jj repo: launching 'jj resolve'..." -ForegroundColor Cyan
+		jj resolve
+		exit $LASTEXITCODE
+	}
+	$parent = Split-Path $jjDir -Parent
+	if ($parent -eq $jjDir) { break }
+	$jjDir = $parent
+}
+
 $gitExtensions = "C:\Program Files\GitExtensions\GitExtensions.exe"
 
 Write-Host ""

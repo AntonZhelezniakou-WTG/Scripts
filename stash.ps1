@@ -8,12 +8,82 @@ $ErrorActionPreference = "Stop"
 
 if ($WorkDir) { Set-Location $WorkDir }
 
-git rev-parse --is-inside-work-tree 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-	Write-Host "Error: not a git repository." -ForegroundColor Red
+# jj has no stash. The idiom is to set the current change aside under a
+# 'stash/<label>' bookmark and open a fresh working copy on its parent; restore
+# moves the working copy back onto the stashed change.
+function Invoke-JjStash {
+	param([string]$Action)
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+	if (-not (Ensure-Fzf)) { Wait-AnyKey; return }
+
+	if ($Action -eq 'apply' -or $Action -eq 'list') {
+		while ($true) {
+			$stashes = @(Get-JjBookmarks | Where-Object { $_ -like 'stash/*' })
+			if ($stashes.Count -eq 0) { Write-Host "No jj stashes (stash/* bookmarks) found." -ForegroundColor Yellow; Wait-AnyKey; return }
+
+			$pick = Select-JjBookmarkViaFzf -Candidates $stashes -Header "Select stash (Enter=restore, Esc=quit):"
+			if (-not $pick) { return }
+
+			Write-Host ""
+			Write-Host "Stash '$pick':" -ForegroundColor Cyan
+			Write-Host "  r = restore (jj edit onto it)   d = drop   c = cancel" -ForegroundColor DarkGray
+			$k = [Console]::ReadKey($true)
+			Write-Host $k.KeyChar
+			switch -regex ($k.KeyChar) {
+				'^[Rr]$' {
+					$ErrorActionPreference = "Continue"
+					jj edit $pick 2>&1 | Out-Host
+					$ErrorActionPreference = "Stop"
+					Write-Host "Restored '$pick' (working copy moved onto it)." -ForegroundColor Green
+					if (Confirm-Action "Remove the '$pick' bookmark now?") {
+						$ErrorActionPreference = "Continue"; jj bookmark delete $pick 2>&1 | Out-Null; $ErrorActionPreference = "Stop"
+					}
+					return
+				}
+				'^[Dd]$' {
+					if (Confirm-Action "Drop stash '$pick'?") {
+						$ErrorActionPreference = "Continue"; jj bookmark delete $pick 2>&1 | Out-Null; $ErrorActionPreference = "Stop"
+						Write-Host "Dropped '$pick'." -ForegroundColor Green
+					}
+				}
+				default { }
+			}
+		}
+	}
+
+	# Create mode
+	if (@(jj diff --summary -r '@' 2>$null).Count -eq 0) {
+		Write-Host "No changes to stash." -ForegroundColor Yellow
+		exit 0
+	}
+
+	Write-Host "Stash label: " -ForegroundColor Cyan -NoNewline
+	$label = [Console]::ReadLine()
+	if ($label) { $label = $label.Trim() }
+	if (-not $label) { $label = "wip" }
+	$bm = "stash/$label"
+
+	$ErrorActionPreference = "Continue"
+	jj bookmark create $bm -r '@'
+	$createExit = $LASTEXITCODE
+	if ($createExit -eq 0) { jj new '@-' 2>&1 | Out-Null }
+	$ErrorActionPreference = "Stop"
+	if ($createExit -ne 0) {
+		Write-Host "Stash failed." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+	Write-Host "Stashed as '$bm'. Working copy reset to parent." -ForegroundColor Green
+}
+
+$script:VcsBackend = Get-VcsBackend
+if (-not $script:VcsBackend) {
+	Write-Host "Error: not a repository." -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }
+if ($script:VcsBackend -eq 'jj') { Invoke-JjStash $Action; exit 0 }
 
 if (-not (Ensure-Fzf)) { Wait-AnyKey; exit 1 }
 

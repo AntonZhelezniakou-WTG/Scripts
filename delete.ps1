@@ -23,12 +23,80 @@ function Switch-ToDefault {
 	return $true
 }
 
+# jj: delete a bookmark (the branch analogue). main/master are protected; the
+# branch's own unpushed commits are surfaced before deletion and can be abandoned.
+function Invoke-JjDelete {
+	param([string]$Target)
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	if ($Target -in @('main', 'master')) {
+		Write-Host "ERROR: Cannot delete protected bookmark: $Target" -ForegroundColor Red
+		exit 1
+	}
+	if ((Get-JjBookmarks) -notcontains $Target) {
+		Write-Host "Error: '$Target' is not a known bookmark." -ForegroundColor Red
+		exit 1
+	}
+
+	$targetRev = (jj log --no-graph -r $Target -T 'commit_id.short() ++ "\n"' 2>$null | Select-Object -First 1)
+
+	# Commits unique to this bookmark: vs its own remote if tracked, else vs base.
+	$base    = Get-JjBaseBookmark
+	$baseRef = if ($base -and (Test-JjRevExists "$base@origin")) { "$base@origin" } elseif ($base) { $base } else { $null }
+	$uniqueRevset = if (Test-JjRevExists "$Target@origin") { "$Target@origin..$Target" }
+	                elseif ($baseRef)                       { "$baseRef..$Target" }
+	                else                                    { $null }
+
+	Write-Host ""
+	Write-Host "Target bookmark : $Target" -ForegroundColor Cyan
+	Write-Host ""
+
+	if ($uniqueRevset) {
+		$unique = @(jj log --no-graph -r $uniqueRevset -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"' 2>$null | Where-Object { $_.Trim() })
+		if ($unique.Count -gt 0) {
+			Write-Host "WARNING: '$Target' has $($unique.Count) commit(s) not in its base/remote:" -ForegroundColor Red
+			$unique | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+			Write-Host ""
+			if (-not (Confirm-Action "Delete anyway? (first confirmation)" -Color Red)) { Write-Host "Aborted." -ForegroundColor DarkGray; return }
+			if (-not (Confirm-Action "CONFIRM AGAIN - the bookmark will be removed." -Color Red)) { Write-Host "Aborted." -ForegroundColor DarkGray; return }
+		}
+	}
+
+	if (-not (Confirm-Action "Delete bookmark '$Target'?" -Color Yellow)) { Write-Host "Aborted." -ForegroundColor DarkGray; return }
+
+	Write-Host ""
+	Write-Host "== Deleting bookmark '$Target' ==" -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj bookmark delete $Target
+	$delExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($delExit -ne 0) {
+		Write-Host "Failed to delete bookmark." -ForegroundColor Red
+		Wait-AnyKey
+		return
+	}
+	Write-Host "Bookmark deleted." -ForegroundColor Green
+
+	# Offer to abandon the now-unreferenced commits (recoverable with jj op undo).
+	# Only when there are commits unique to the branch, so we never run a no-op.
+	if ($targetRev -and $baseRef -and (Get-JjRevCount "$baseRef..$targetRev") -gt 0) {
+		Write-Host ""
+		if (Confirm-Action "Also abandon the commits that were only on '$Target'?" -Color Yellow) {
+			$ErrorActionPreference = "Continue"
+			jj abandon -r "$baseRef..$targetRev"
+			$ErrorActionPreference = "Stop"
+			Write-Host "Commits abandoned (recover with 'jj op undo')." -ForegroundColor Green
+		}
+	}
+}
+
 if ($WorkDir) { Set-Location $WorkDir }
 
-# Validate git repository
-git rev-parse --is-inside-work-tree 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-	Write-Host "Error: not a git repository." -ForegroundColor Red
+# Validate repository
+$script:VcsBackend = Get-VcsBackend
+if (-not $script:VcsBackend) {
+	Write-Host "Error: not a repository." -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }
@@ -37,6 +105,8 @@ if (-not $Target) {
 	Write-Host "Usage: delete <branch> | <worktree-name> | <worktree-path>" -ForegroundColor Yellow
 	exit 1
 }
+
+if ($script:VcsBackend -eq 'jj') { Invoke-JjDelete $Target; exit 0 }
 
 # Resolve target: could be a branch name, worktree folder name, or full worktree path.
 $allWorktrees = git worktree list --porcelain 2>$null

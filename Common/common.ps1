@@ -2,6 +2,7 @@
 # Usage: . (Join-Path $PSScriptRoot "Common\common.ps1")
 
 . (Join-Path $PSScriptRoot "Git.ps1")
+. (Join-Path $PSScriptRoot "Vcs.ps1")
 . (Join-Path $PSScriptRoot "Stash.ps1")
 . (Join-Path $PSScriptRoot "FzfTree.ps1")
 . (Join-Path $PSScriptRoot "copy-wt-extras.ps1")

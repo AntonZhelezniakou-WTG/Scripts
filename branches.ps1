@@ -252,15 +252,167 @@ function Open-SiblingRepo {
 	}
 }
 
+# ── jj backend ───────────────────────────────────────────────────────────────
+
+# Switch onto a bookmark: jj new (work on top — the usual "checkout") or jj edit
+# (amend the bookmarked change). Resolves remote-only bookmarks via fetch.
+function Switch-JjBookmark {
+	param([string]$Name)
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	if ((Get-JjBookmarks) -notcontains $Name) {
+		$ErrorActionPreference = "Continue"; jj git fetch 2>&1 | Out-Null; $ErrorActionPreference = "Stop"
+		if (Test-JjRevExists "$Name@origin") {
+			$ErrorActionPreference = "Continue"; jj bookmark create $Name -r "$Name@origin"; $ErrorActionPreference = "Stop"
+		} else {
+			Write-Host "Error: bookmark '$Name' not found locally or on origin." -ForegroundColor Red
+			Wait-AnyKey
+			return
+		}
+	}
+
+	$opts   = @("New change on '$Name' (jj new)", "Edit '$Name' directly (jj edit)")
+	$choice = Invoke-Fzf -Entries $opts -ExtraArgs @("--pointer=>", "--color=pointer:green,fg+:green:bold,bg+:-1")
+	if (-not $choice) { return }
+
+	$ErrorActionPreference = "Continue"
+	if ($choice.Trim() -eq $opts[0]) { jj new $Name } else { jj edit $Name }
+	$ErrorActionPreference = "Stop"
+}
+
+# Merge a bookmark into the current change (jj new with two parents).
+function Invoke-JjMerge {
+	param([string]$Source)
+	if (-not (Confirm-Action "Merge '$Source' into the current change?")) { return }
+	$ErrorActionPreference = "Continue"
+	jj new -m "Merge $Source" '@' $Source
+	$rc = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($rc -ne 0) { Write-Host "Merge failed." -ForegroundColor Red; return }
+	if (Test-JjHasConflicts) {
+		Write-Host "Merge produced conflicts. Resolve with 'jj resolve', or undo with 'jj op undo'." -ForegroundColor Yellow
+	} else {
+		Write-Host "Merged '$Source'." -ForegroundColor Green
+	}
+}
+
+# Interactive bookmark menu: list with origin/base sync, switch / delete / merge / PR.
+function Invoke-JjBranches {
+	param([string]$Branch)
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	if ($Branch) { Switch-JjBookmark $Branch; exit 0 }
+
+	if (-not (Ensure-Fzf)) { Wait-AnyKey; exit 1 }
+
+	while ($true) {
+		$bookmarks = @(Get-JjBookmarks)
+		if ($bookmarks.Count -eq 0) {
+			Write-Host "No bookmarks. Use 'commit' or 'create' to make one." -ForegroundColor Yellow
+			exit 0
+		}
+		$onWc = @(Get-JjBookmarkOnWorkingCopy)
+		$base = Get-JjBaseBookmark
+		# Resolvable ref for base-sync revsets (local bookmark, else its remote).
+		$baseRef = if (-not $base) { $null }
+		           elseif ($bookmarks -contains $base) { $base }
+		           elseif (Test-JjRevExists "$base@origin") { "$base@origin" }
+		           else { $null }
+
+		$rawEntries = @(foreach ($b in $bookmarks) {
+			$marker = if ($onWc -contains $b) { "*" } else { " " }
+
+			$syncOrigin = "ORIGIN: n/a"
+			if (Test-JjRevExists "$b@origin") {
+				$ahead  = Get-JjRevCount "$b@origin..$b"
+				$behind = Get-JjRevCount "$b..$b@origin"
+				$syncOrigin = if ($ahead -gt 0 -and $behind -gt 0) { "ORIGIN: ${UP}${ahead} ${DOWN}${behind}" }
+				              elseif ($ahead  -gt 0) { "ORIGIN: ${UP}${ahead}" }
+				              elseif ($behind -gt 0) { "ORIGIN: ${DOWN}${behind}" }
+				              else { "ORIGIN: ${EQ}" }
+			}
+
+			$syncBase = ""
+			if ($baseRef -and $b -ne $base) {
+				$ahead2  = Get-JjRevCount "$baseRef..$b"
+				$behind2 = Get-JjRevCount "$b..$baseRef"
+				$syncBase = if ($ahead2 -gt 0 -and $behind2 -gt 0) { "from ${base}: ${UP}${ahead2} ${DOWN}${behind2}" }
+				            elseif ($ahead2  -gt 0) { "from ${base}: ${UP}${ahead2}" }
+				            elseif ($behind2 -gt 0) { "from ${base}: ${DOWN}${behind2}" }
+				            else { "from ${base}: ${EQ}" }
+			}
+
+			[PSCustomObject]@{ Marker = $marker; Branch = $b; SyncOrigin = $syncOrigin; SyncBase = $syncBase }
+		})
+
+		$maxLen     = ($rawEntries | ForEach-Object { $_.Branch.Length   } | Measure-Object -Maximum).Maximum
+		$maxBaseLen = ($rawEntries | ForEach-Object { $_.SyncBase.Length } | Measure-Object -Maximum).Maximum
+
+		$sortedEntries = $rawEntries | Sort-Object {
+			if ($_.Marker -eq "*") { 0 }
+			elseif ($_.Branch -in @('main', 'master')) { 1 }
+			else { 2 }
+		}, Branch
+
+		$esc = [char]27; $yellow = "$esc[93m"; $bold = "$esc[1m"; $reset = "$esc[0m"
+		$menuEntries = $sortedEntries | ForEach-Object {
+			$padded  = $_.Branch.PadRight($maxLen)
+			$padBase = $_.SyncBase.PadRight($maxBaseLen)
+			$line    = "$($_.Marker) $padded    $padBase    $($_.SyncOrigin)"
+			if ($_.Marker -eq "*") { "${bold}${yellow}${line}${reset}" } else { $line }
+		}
+
+		$lines = $menuEntries | fzf `
+			--style=minimal --height=40% --no-info --layout=reverse `
+			--pointer=">" --gutter=" " `
+			--color="pointer:green,fg+:green:bold,bg+:-1" `
+			--ansi `
+			--header="Select bookmark (Del=delete, +=PRs/URL, m=merge into current, Esc=quit):" `
+			--header-first `
+			--expect="del,+,esc,m"
+
+		if (-not $lines) { exit 0 }
+		$keyUsed        = $lines[0].Trim()
+		$rawLine        = if ($lines.Count -gt 1) { $lines[1].Trim() } else { "" }
+		$branchSelected = $rawLine -replace "^[*+ ] ", "" -replace "\s{2,}.*$", ""
+
+		if ($keyUsed -eq "esc") { exit 0 }
+
+		if ($keyUsed -eq "m") {
+			if ($branchSelected) { Invoke-JjMerge $branchSelected; Wait-AnyKey }
+			continue
+		}
+
+		if ($keyUsed -eq "+") {
+			$prBranch = Select-PR
+			if (-not $prBranch) { continue }
+			$branchSelected = $prBranch
+		}
+
+		if (-not $branchSelected) { continue }
+
+		if ($keyUsed -eq "del") {
+			Remove-Branch -BranchName $branchSelected
+			continue
+		}
+
+		Switch-JjBookmark $branchSelected
+		exit 0
+	}
+}
+
 if ($WorkDir) { Set-Location $WorkDir }
 
-# Validate git repository
-git rev-parse --is-inside-work-tree 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-	Write-Host "Error: not a git repository." -ForegroundColor Red
+# Validate repository
+$script:VcsBackend = Get-VcsBackend
+if (-not $script:VcsBackend) {
+	Write-Host "Error: not a repository." -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }
+if ($script:VcsBackend -eq 'jj') { Invoke-JjBranches -Branch $Branch; exit 0 }
 
 # Handle empty repo (no commits yet)
 $hasCommits = git rev-parse HEAD 2>$null

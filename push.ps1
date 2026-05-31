@@ -7,6 +7,35 @@ $ErrorActionPreference = "Stop"
 
 if ($WorkDir) { Set-Location $WorkDir }
 
+# ── jj backend ───────────────────────────────────────────────────────────────
+$script:VcsBackend = Get-VcsBackend
+if ($script:VcsBackend -eq 'jj') {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	$bookmark = Select-JjBookmarkForPush
+	if (-not $bookmark) {
+		Write-Host "No bookmark to push. Create one with 'commit' or 'create'." -ForegroundColor Yellow
+		Wait-AnyKey
+		exit 1
+	}
+
+	Write-Host ""
+	Write-Host "Pushing bookmark '$bookmark'..." -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj git push -b $bookmark
+	$pushExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($pushExit -ne 0) {
+		Write-Host "Push failed." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+	Write-Host "Pushed." -ForegroundColor Green
+	Invoke-JjPrCreate -Bookmark $bookmark
+	exit 0
+}
+
 $branch = git rev-parse --abbrev-ref HEAD 2>&1
 if ($LASTEXITCODE -ne 0) {
 	Write-Host "Not a git repository." -ForegroundColor Red

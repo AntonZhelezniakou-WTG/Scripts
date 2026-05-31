@@ -10,6 +10,20 @@ if ($WorkDir) {
 	Set-Location $WorkDir
 }
 
+# jj: the git remote-tracking-ref GC and fetch-refspec rebuild that purge performs
+# don't apply — `jj git fetch` tracks all remote bookmarks and jj manages its own
+# refs. Run jj's garbage collection instead and exit.
+if ((Get-VcsBackend) -eq 'jj') {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+	Write-Host "== jj repo: running garbage collection (jj util gc) ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj util gc 2>&1 | Out-Host
+	$ErrorActionPreference = "Stop"
+	Write-Host "Done" -ForegroundColor Green
+	exit 0
+}
+
 $ErrorActionPreference = "Continue"
 $null = git rev-parse --is-inside-work-tree 2>$null
 $ErrorActionPreference = "Stop"

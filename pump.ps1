@@ -12,6 +12,66 @@ $ErrorActionPreference = "Stop"
 # so a stray first positional argument can't break the cd.
 if ($WorkDir -and (Test-Path -LiteralPath $WorkDir -PathType Container)) { Set-Location $WorkDir }
 
+# ── jj backend ───────────────────────────────────────────────────────────────
+if ((Get-VcsBackend) -eq 'jj') {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	$baseBranch = Get-JjBaseBookmark -Explicit $Base
+	if (-not $baseBranch) {
+		Write-Host "Error: no base bookmark (main/master) found." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+
+	if (-not $Force) {
+		if (-not (Confirm-Action "Fetch and rebase the current change onto '$baseBranch'?")) {
+			Write-Host "Cancelled." -ForegroundColor Yellow
+			exit 0
+		}
+	}
+
+	Write-Host ""
+	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj git fetch
+	$ErrorActionPreference = "Stop"
+
+	# Prefer the freshly-fetched remote bookmark, fall back to the local one.
+	$dest = if (Test-JjRevExists "$baseBranch@origin") { "$baseBranch@origin" }
+	        elseif (Test-JjRevExists $baseBranch)       { $baseBranch }
+	        else { $null }
+	if (-not $dest) {
+		Write-Host "Error: '$baseBranch' not found locally or on origin." -ForegroundColor Red
+		Wait-AnyKey
+		exit 1
+	}
+
+	Write-Host ""
+	Write-Host "== Rebasing current branch onto '$dest' ==" -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj rebase -b '@' -d $dest
+	$rebaseExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+
+	if ($rebaseExit -ne 0) {
+		Write-Host "Rebase failed (see the message above). Recover with 'jj op undo'." -ForegroundColor Red
+		Wait-AnyKey
+		exit $rebaseExit
+	}
+
+	# jj exits 0 even with conflicts — detect them explicitly.
+	if (Test-JjHasConflicts) {
+		Write-Host ""
+		Write-Host "Rebase produced conflicts. Resolve with 'jj resolve', or undo with 'jj op undo'." -ForegroundColor Yellow
+		Wait-AnyKey
+		exit 1
+	}
+
+	Write-Host "Rebase completed successfully." -ForegroundColor Green
+	exit 0
+}
+
 git rev-parse --is-inside-work-tree 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
 	Write-Host "Error: not a git repository." -ForegroundColor Red

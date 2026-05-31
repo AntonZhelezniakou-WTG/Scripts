@@ -6,6 +6,50 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
+# jj: "create a branch" = put a bookmark on the current change (the local-branch
+# analogue). Workspaces (the worktree analogue) are a separate follow-up.
+function Invoke-JjCreate {
+	param([string]$Name)
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	if ((Get-JjBookmarks) -contains $Name -or (Test-JjRevExists "$Name@origin")) {
+		Write-Host ""
+		Write-Host "Bookmark '$Name' already exists." -ForegroundColor Yellow
+		if (Confirm-Action "Move to it (jj edit) instead?") {
+			$ErrorActionPreference = "Continue"
+			jj edit $Name 2>&1 | Out-Host
+			$ErrorActionPreference = "Stop"
+		}
+		Wait-AnyKey
+		return
+	}
+
+	Write-Host ""
+	Write-Host "== Creating bookmark '$Name' at the current change ==" -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj bookmark create $Name -r '@'
+	$createExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($createExit -ne 0) {
+		Write-Host "Failed to create bookmark." -ForegroundColor Red
+		Wait-AnyKey
+		return
+	}
+	Write-Host "Bookmark created." -ForegroundColor Green
+
+	Write-Host ""
+	if (Confirm-Action "Push '$Name' to origin?") {
+		$ErrorActionPreference = "Continue"
+		jj git push -b $Name
+		$pushExit = $LASTEXITCODE
+		$ErrorActionPreference = "Stop"
+		if ($pushExit -ne 0) { Write-Host "Push failed." -ForegroundColor Red }
+		else { Write-Host "Pushed to origin/$Name." -ForegroundColor Green }
+	}
+	Wait-AnyKey
+}
+
 # Backward compatibility for old positional order: create.ps1 <workdir> <branch>
 if ($BranchName -and $WorkDir -and (Test-Path -LiteralPath $BranchName -PathType Container) -and -not (Test-Path -LiteralPath $WorkDir -PathType Container)) {
 	$tmp = $BranchName
@@ -23,9 +67,9 @@ if ($WorkDir) {
 }
 
 # --- Validate repo ---
-git rev-parse --is-inside-work-tree 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-	Write-Host "Error: not a git repository." -ForegroundColor Red
+$script:VcsBackend = Get-VcsBackend
+if (-not $script:VcsBackend) {
+	Write-Host "Error: not a repository." -ForegroundColor Red
 	Wait-AnyKey
 	exit 1
 }
@@ -46,6 +90,9 @@ if ($BranchName -notmatch '^AEM/') {
 		$BranchName = "AEM/$BranchName"
 	}
 }
+
+# --- jj backend: bookmark-based create ---
+if ($script:VcsBackend -eq 'jj') { Invoke-JjCreate $BranchName; exit 0 }
 
 Write-Host ""
 Write-Host "Branch: $BranchName" -ForegroundColor Cyan

@@ -6,9 +6,9 @@ if "%~1"=="" (
     exit /b 1
 )
 
-git rev-parse --is-inside-work-tree >nul 2>&1
+git rev-parse --is-inside-work-tree >nul 2>&1 || jj root >nul 2>&1
 if errorlevel 1 (
-    echo Error: not a git repository. >&2
+    echo Error: not a repository. >&2
     exit /b 1
 )
 
