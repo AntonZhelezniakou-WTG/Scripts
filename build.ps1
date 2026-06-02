@@ -455,7 +455,20 @@ $mode = @("FullBuild", "Build", "QuickBuild") | fzf `
 
 if (-not $mode) { exit 0 }
 
+# Resolve qgl: it is a dotnet global tool, but its tools dir is only on PATH via the
+# user's profile — which the -NoProfile shim skips. Check PATH first, then fall back.
+$qgl = (Get-Command qgl -ErrorAction SilentlyContinue).Source
+if (-not $qgl) {
+	$fallback = Join-Path $env:USERPROFILE ".dotnet\tools\qgl.exe"
+	if (Test-Path $fallback) { $qgl = $fallback }
+}
+if (-not $qgl) {
+	Write-Host "Error: qgl not found on PATH or in $env:USERPROFILE\.dotnet\tools." -ForegroundColor Red
+	Write-Host "Install it with: dotnet tool install --global <qgl-package>" -ForegroundColor Yellow
+	Wait-AnyKey
+	exit 1
+}
+
 $pathArgs = ($buildDirs | ForEach-Object { "`"$_`"" }) -join " "
-$cmd = "qgl build -m $mode --skip-network-check $pathArgs"
-Write-Host $cmd -ForegroundColor DarkGray
-Invoke-Expression $cmd
+Write-Host "qgl build -m $mode --skip-network-check $pathArgs" -ForegroundColor DarkGray
+& $qgl build -m $mode --skip-network-check @buildDirs
