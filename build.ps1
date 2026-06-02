@@ -472,3 +472,5 @@ if (-not $qgl) {
 $pathArgs = ($buildDirs | ForEach-Object { "`"$_`"" }) -join " "
 Write-Host "qgl build -m $mode --skip-network-check $pathArgs" -ForegroundColor DarkGray
 & $qgl build -m $mode --skip-network-check @buildDirs
+# Propagate qgl's result; otherwise pwsh -File returns 0 and a failed build looks successful.
+exit $LASTEXITCODE
