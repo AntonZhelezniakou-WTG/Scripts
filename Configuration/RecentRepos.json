@@ -5,6 +5,7 @@
   ],
   "wisetechglobal": [
     "Tools.CWSync",
+    "WTG.AI.Prompts",
     "CargoWise.Database",
     "DevTools",
     "MDM.InternalTools",
