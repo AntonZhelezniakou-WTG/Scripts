@@ -25,6 +25,53 @@ function Invoke-JjCreate {
 		return
 	}
 
+	# Where to start: when @ is not on the base line (main/master is not the
+	# nearest bookmark), offer to fork from a freshly-fetched base instead of
+	# bookmarking the current change.
+	$base = Get-JjBaseBookmark
+	$nearBase = $base -and (@(Get-JjNearestAncestorBookmarks) -contains $base)
+	if ($base -and -not $nearBase) {
+		if (-not (Ensure-Fzf)) { Wait-AnyKey; return }
+		$options = @("At current change (@)", "New change off '$base' (fetch from origin)")
+		$choice = Invoke-Fzf -Entries $options -ExtraArgs @(
+			"--header=Start '$Name' from:", "--header-first",
+			"--pointer=>", "--color=pointer:green,fg+:green:bold,bg+:-1")
+		if (-not $choice) {
+			Write-Host "Cancelled." -ForegroundColor Yellow
+			Wait-AnyKey
+			return
+		}
+		if ($choice.Trim() -eq $options[1]) {
+			Write-Host ""
+			Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+			$ErrorActionPreference = "Continue"
+			jj git fetch | Out-Host
+			$ErrorActionPreference = "Stop"
+
+			# Prefer the freshly-fetched remote bookmark, fall back to the local one.
+			$dest = if (Test-JjRevExists "$base@origin") { "$base@origin" }
+			        elseif (Test-JjRevExists $base)       { $base }
+			        else { $null }
+			if (-not $dest) {
+				Write-Host "Error: '$base' not found locally or on origin." -ForegroundColor Red
+				Wait-AnyKey
+				return
+			}
+
+			Write-Host ""
+			Write-Host "== Starting new change off '$dest' ==" -ForegroundColor Cyan
+			$ErrorActionPreference = "Continue"
+			jj new $dest 2>&1 | Out-Host
+			$newExit = $LASTEXITCODE
+			$ErrorActionPreference = "Stop"
+			if ($newExit -ne 0) {
+				Write-Host "Failed to start a new change off '$dest'." -ForegroundColor Red
+				Wait-AnyKey
+				return
+			}
+		}
+	}
+
 	Write-Host ""
 	Write-Host "== Creating bookmark '$Name' at the current change ==" -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
