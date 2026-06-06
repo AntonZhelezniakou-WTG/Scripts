@@ -89,7 +89,7 @@ if ((Get-VcsBackend) -eq 'jj') {
 		}
 		$dest = "$base@origin"
 	} else {
-		$bm = Select-JjBookmarkForPush
+		$bm = Select-JjBookmarkForPush -Header "Which bookmark to pull?"
 		if (-not $bm) {
 			Write-Host "No bookmark on the current change to pull." -ForegroundColor Yellow
 			exit 0

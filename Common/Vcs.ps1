@@ -213,21 +213,23 @@ function Select-JjBookmarkForCommit {
 	return (Read-JjBookmarkName)
 }
 
-# Pick the bookmark associated with the current change for push: the one on @,
+# Pick the bookmark associated with the current change: the one on @,
 # else the single nearest ancestor, else the sole bookmark; ambiguity -> fzf.
-# Returns $null when the repo has no bookmark to push.
+# Returns $null when the repo has no bookmark. -Header customises the fzf
+# prompt for the caller's operation (push by default, pull, etc.).
 function Select-JjBookmarkForPush {
+	param([string]$Header = "Which bookmark to push?")
 	$onWc = @(Get-JjBookmarkOnWorkingCopy)
 	if ($onWc.Count -eq 1) { return $onWc[0] }
-	if ($onWc.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $onWc -Header "Which bookmark to push?") }
+	if ($onWc.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $onWc -Header $Header) }
 
 	$nearest = @(Get-JjNearestAncestorBookmarks)
 	if ($nearest.Count -eq 1) { return $nearest[0] }
-	if ($nearest.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $nearest -Header "Which bookmark to push?") }
+	if ($nearest.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $nearest -Header $Header) }
 
 	$all = @(Get-JjBookmarks)
 	if ($all.Count -eq 1) { return $all[0] }
-	if ($all.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $all -Header "Which bookmark to push?") }
+	if ($all.Count -gt 1) { return (Select-JjBookmarkViaFzf -Candidates $all -Header $Header) }
 	return $null
 }
 
