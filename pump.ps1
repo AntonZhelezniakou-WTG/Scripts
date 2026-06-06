@@ -32,9 +32,9 @@ if ((Get-VcsBackend) -eq 'jj') {
 	}
 
 	Write-Host ""
-	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+	Write-Host "== Fetching '$baseBranch' from origin ==" -ForegroundColor DarkGray
 	$ErrorActionPreference = "Continue"
-	jj git fetch
+	jj git fetch --branch $baseBranch
 	$ErrorActionPreference = "Stop"
 
 	# Prefer the freshly-fetched remote bookmark, fall back to the local one.

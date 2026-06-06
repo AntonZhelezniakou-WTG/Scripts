@@ -12,9 +12,9 @@ function Start-JjChangeOffBase {
 	param([Parameter(Mandatory)][string]$Base)
 
 	Write-Host ""
-	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+	Write-Host "== Fetching '$Base' from origin ==" -ForegroundColor DarkGray
 	$ErrorActionPreference = "Continue"
-	jj git fetch | Out-Host
+	jj git fetch --branch $Base | Out-Host
 	$ErrorActionPreference = "Stop"
 
 	# Prefer the freshly-fetched remote bookmark, fall back to the local one.
@@ -124,7 +124,10 @@ function Invoke-JjCreate {
 		$pushExit = $LASTEXITCODE
 		$ErrorActionPreference = "Stop"
 		if ($pushExit -ne 0) { Write-Host "Push failed." -ForegroundColor Red }
-		else { Write-Host "Pushed to origin/$Name." -ForegroundColor Green }
+		else {
+			Write-Host "Pushed to origin/$Name." -ForegroundColor Green
+			Ensure-JjFetchRefspec $Name
+		}
 	}
 	Wait-AnyKey
 }

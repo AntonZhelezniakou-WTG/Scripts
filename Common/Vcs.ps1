@@ -233,6 +233,18 @@ function Select-JjBookmarkForPush {
 	return $null
 }
 
+# Huge-repo discipline: .git/config carries narrow per-branch fetch refspecs
+# instead of the +refs/heads/* glob, so refspec-driven fetches (plain
+# `jj git fetch`, git tooling) stay cheap. Register the branch in a colocated
+# repo's .git/config whenever a bookmark starts being pushed/pulled.
+function Ensure-JjFetchRefspec {
+	param([Parameter(Mandatory)][string]$Name)
+	$root = Get-JjRoot
+	if (-not $root) { return }
+	if (-not (Test-Path (Join-Path $root ".git"))) { return } # not colocated
+	Ensure-FetchRefspec $Name
+}
+
 # Offer to create a PR for a pushed bookmark (gh reads the exported git ref).
 # Skips main/master and no-ops when a PR already exists.
 function Invoke-JjPrCreate {

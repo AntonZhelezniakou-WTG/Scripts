@@ -11,8 +11,8 @@ if ($WorkDir) {
 }
 
 # jj: the git remote-tracking-ref GC and fetch-refspec rebuild that purge performs
-# don't apply — `jj git fetch` tracks all remote bookmarks and jj manages its own
-# refs. Run jj's garbage collection instead and exit.
+# don't apply — in colocated repos `jj git fetch` follows the same .git/config
+# refspecs, and jj manages its own refs. Run jj's garbage collection instead.
 if ((Get-VcsBackend) -eq 'jj') {
 	$root = Get-JjRoot
 	if ($root) { Set-Location $root }

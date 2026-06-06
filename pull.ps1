@@ -75,11 +75,9 @@ if ((Get-VcsBackend) -eq 'jj') {
 	$root = Get-JjRoot
 	if ($root) { Set-Location $root }
 
-	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
-	$ErrorActionPreference = "Continue"
-	jj git fetch | Out-Host
-	$ErrorActionPreference = "Stop"
-
+	# Resolve what to pull first, then fetch only that branch — a plain
+	# `jj git fetch` would walk every refspec (or, without narrow refspecs,
+	# every branch of a huge remote).
 	if ($Target -in @('main', 'master')) {
 		$base = Get-JjBaseBookmark -Explicit $Target
 		if (-not $base) {
@@ -87,24 +85,27 @@ if ((Get-VcsBackend) -eq 'jj') {
 			Wait-AnyKey
 			exit 1
 		}
-		$dest = "$base@origin"
+		$fetchName = $base
 	} else {
 		$bm = Select-JjBookmarkForPush -Header "Which bookmark to pull?"
 		if (-not $bm) {
 			Write-Host "No bookmark on the current change to pull." -ForegroundColor Yellow
 			exit 0
 		}
-		if (-not (Test-JjRevExists "$bm@origin")) {
-			Write-Host "Bookmark '$bm' has no remote on origin — nothing to pull." -ForegroundColor Yellow
-			exit 0
-		}
-		$dest = "$bm@origin"
+		$fetchName = $bm
 	}
+	$dest = "$fetchName@origin"
+
+	Write-Host "== Fetching '$fetchName' from origin ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj git fetch --branch $fetchName | Out-Host
+	$ErrorActionPreference = "Stop"
 
 	if (-not (Test-JjRevExists $dest)) {
-		Write-Host "'$dest' not found — nothing to pull." -ForegroundColor Yellow
+		Write-Host "Bookmark '$fetchName' has no remote on origin — nothing to pull." -ForegroundColor Yellow
 		exit 0
 	}
+	Ensure-JjFetchRefspec $fetchName
 
 	Write-Host ""
 	Write-Host "== Rebasing current branch onto '$dest' ==" -ForegroundColor Cyan

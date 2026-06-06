@@ -282,6 +282,7 @@ function Invoke-JjCommit {
 		return
 	}
 	Write-Host "Pushed." -ForegroundColor Green
+	Ensure-JjFetchRefspec $bookmark
 
 	Invoke-JjPrCreate -Bookmark $bookmark
 }

@@ -10,12 +10,23 @@ if ($WorkDir) {
 }
 
 # ── jj backend ───────────────────────────────────────────────────────────────
+# Mirror the git mode below: fetch only the branches we work on (local
+# bookmarks), never the whole remote — a huge repo has thousands of branches.
 if ((Get-VcsBackend) -eq 'jj') {
 	$root = Get-JjRoot
 	if ($root) { Set-Location $root }
-	Write-Host "== Fetching all remote bookmarks (jj git fetch) ==" -ForegroundColor DarkGray
+
+	$bookmarks = @(Get-JjBookmarks)
+	if ($bookmarks.Count -eq 0) {
+		Write-Host "No local bookmarks to fetch." -ForegroundColor Yellow
+		exit 0
+	}
+
+	Write-Host "== Fetching local bookmarks from origin ==" -ForegroundColor DarkGray
+	$bookmarks | ForEach-Object { Write-Host "  fetch $_" }
+	$branchArgs = @($bookmarks | ForEach-Object { '--branch'; $_ })
 	$ErrorActionPreference = "Continue"
-	jj git fetch
+	jj git fetch @branchArgs
 	$exit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	if ($exit -ne 0) {

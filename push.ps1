@@ -32,6 +32,7 @@ if ($script:VcsBackend -eq 'jj') {
 		exit 1
 	}
 	Write-Host "Pushed." -ForegroundColor Green
+	Ensure-JjFetchRefspec $bookmark
 	Invoke-JjPrCreate -Bookmark $bookmark
 	exit 0
 }

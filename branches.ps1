@@ -262,9 +262,10 @@ function Switch-JjBookmark {
 	if ($root) { Set-Location $root }
 
 	if ((Get-JjBookmarks) -notcontains $Name) {
-		$ErrorActionPreference = "Continue"; jj git fetch 2>&1 | Out-Null; $ErrorActionPreference = "Stop"
+		$ErrorActionPreference = "Continue"; jj git fetch --branch $Name 2>&1 | Out-Null; $ErrorActionPreference = "Stop"
 		if (Test-JjRevExists "$Name@origin") {
 			$ErrorActionPreference = "Continue"; jj bookmark create $Name -r "$Name@origin"; $ErrorActionPreference = "Stop"
+			Ensure-JjFetchRefspec $Name
 		} else {
 			Write-Host "Error: bookmark '$Name' not found locally or on origin." -ForegroundColor Red
 			Wait-AnyKey
