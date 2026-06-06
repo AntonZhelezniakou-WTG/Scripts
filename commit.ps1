@@ -113,6 +113,9 @@ function Invoke-JjCommit {
 	$root = Get-JjRoot
 	if ($root) { Set-Location $root }
 
+	# Large new files may have been silently left out of the working copy.
+	Resolve-JjSnapshotRefusals
+
 	if (@(jj diff --summary -r '@' 2>$null).Count -eq 0) {
 		Write-Host "No changes to commit." -ForegroundColor Yellow
 		return

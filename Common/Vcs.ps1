@@ -233,6 +233,42 @@ function Select-JjBookmarkForPush {
 	return $null
 }
 
+# jj silently skips new files larger than snapshot.max-new-file-size (default
+# 1MiB): they never enter the working copy, and scripts that suppress stderr
+# hide jj's warning entirely — the file just doesn't show up anywhere. Surface
+# the refusal and offer to raise the repo-local limit so the files are picked up.
+function Resolve-JjSnapshotRefusals {
+	$ErrorActionPreference = "Continue"
+	$lines = @(jj --color=never st 2>&1 | ForEach-Object { "$_" })
+	$ErrorActionPreference = "Stop"
+	if (-not ($lines -match 'Refused to snapshot')) { return }
+
+	# Per-file warning line: "  <path>: <size> (<bytes> bytes); the maximum size allowed is ..."
+	$refused = [ordered]@{}
+	foreach ($l in $lines) {
+		if ($l -match '^\s+(.+?):\s+\S+\s+\((\d+) bytes\); the maximum size allowed') {
+			$refused[$Matches[1]] = [long]$Matches[2]
+		}
+	}
+	if ($refused.Count -eq 0) { return }
+
+	Write-Host ""
+	Write-Host "[warn] jj refused to snapshot large new file(s) (over $(jj config get snapshot.max-new-file-size)):" -ForegroundColor Yellow
+	foreach ($k in $refused.Keys) {
+		Write-Host ("  {0} ({1:N1} MiB)" -f $k, ($refused[$k] / 1MB)) -ForegroundColor Yellow
+	}
+	$maxBytes = ($refused.Values | Measure-Object -Maximum).Maximum
+	if (Confirm-Action "Raise this repo's snapshot.max-new-file-size to $maxBytes bytes and include them?") {
+		$ErrorActionPreference = "Continue"
+		jj config set --repo snapshot.max-new-file-size $maxBytes
+		jj st 2>&1 | Out-Null   # re-snapshot under the new limit
+		$ErrorActionPreference = "Stop"
+		Write-Host "Limit raised; file(s) snapshotted." -ForegroundColor Green
+	} else {
+		Write-Host "Skipped. Add them to .gitignore, or raise snapshot.max-new-file-size later." -ForegroundColor DarkGray
+	}
+}
+
 # Huge-repo discipline: .git/config carries narrow per-branch fetch refspecs
 # instead of the +refs/heads/* glob, so refspec-driven fetches (plain
 # `jj git fetch`, git tooling) stay cheap. Register the branch in a colocated
