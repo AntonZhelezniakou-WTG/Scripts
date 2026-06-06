@@ -78,6 +78,26 @@ function Invoke-JjDelete {
 	}
 	Write-Host "Bookmark deleted." -ForegroundColor Green
 
+	# A tracked remote bookmark survives local deletion as "<name> (deleted)" and
+	# would silently delete the origin branch on its next push. Resolve it now,
+	# explicitly: push the deletion, or forget it locally and keep origin intact.
+	if (Test-JjRevExists "$Target@origin") {
+		Write-Host ""
+		if (Confirm-Action "Also delete '$Target' on origin?" -Color Yellow) {
+			$ErrorActionPreference = "Continue"
+			jj git push -b $Target
+			$pushExit = $LASTEXITCODE
+			$ErrorActionPreference = "Stop"
+			if ($pushExit -eq 0) { Write-Host "Deleted on origin." -ForegroundColor Green }
+			else { Write-Host "Failed to delete on origin." -ForegroundColor Red }
+		} else {
+			$ErrorActionPreference = "Continue"
+			jj bookmark forget $Target --include-remotes 2>&1 | Out-Null
+			$ErrorActionPreference = "Stop"
+			Write-Host "Kept on origin; forgotten locally." -ForegroundColor DarkGray
+		}
+	}
+
 	# Offer to abandon the now-unreferenced commits (recoverable with jj op undo).
 	# Only when there are commits unique to the branch, so we never run a no-op.
 	if ($targetRev -and $baseRef -and (Get-JjRevCount "$baseRef..$targetRev") -gt 0) {

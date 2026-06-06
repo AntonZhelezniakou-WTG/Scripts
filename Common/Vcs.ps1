@@ -95,10 +95,12 @@ function Test-JjHasConflicts {
 
 # ── Bookmarks ────────────────────────────────────────────────────────────────
 
-# All local bookmark names.
+# All local bookmark names. The present/remote filter matters: a deleted but
+# still-tracked bookmark lingers as "<name> (deleted)" plus its @origin entry,
+# and a bare 'name' template would keep resurrecting it in every list.
 function Get-JjBookmarks {
 	$ErrorActionPreference = "Continue"
-	$out = jj bookmark list -T 'name ++ "\n"' 2>$null
+	$out = jj bookmark list -T 'if(self.present() && !self.remote(), name ++ "\n", "")' 2>$null
 	$ErrorActionPreference = "Stop"
 	return @($out | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | Select-Object -Unique)
 }
