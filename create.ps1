@@ -121,15 +121,7 @@ function Invoke-JjCreate {
 
 	Write-Host ""
 	if (Confirm-Action "Push '$Name' to origin?") {
-		$ErrorActionPreference = "Continue"
-		jj git push -b $Name
-		$pushExit = $LASTEXITCODE
-		$ErrorActionPreference = "Stop"
-		if ($pushExit -ne 0) { Write-Host "Push failed." -ForegroundColor Red }
-		else {
-			Write-Host "Pushed to origin/$Name." -ForegroundColor Green
-			Ensure-JjFetchRefspec $Name
-		}
+		$null = Invoke-JjPushBookmark $Name
 	}
 	Wait-AnyKey
 }

@@ -21,18 +21,10 @@ if ($script:VcsBackend -eq 'jj') {
 	}
 
 	Write-Host ""
-	Write-Host "Pushing bookmark '$bookmark'..." -ForegroundColor Cyan
-	$ErrorActionPreference = "Continue"
-	jj git push -b $bookmark
-	$pushExit = $LASTEXITCODE
-	$ErrorActionPreference = "Stop"
-	if ($pushExit -ne 0) {
-		Write-Host "Push failed." -ForegroundColor Red
+	if (-not (Invoke-JjPushBookmark $bookmark)) {
 		Wait-AnyKey
 		exit 1
 	}
-	Write-Host "Pushed." -ForegroundColor Green
-	Ensure-JjFetchRefspec $bookmark
 	Invoke-JjPrCreate -Bookmark $bookmark
 	exit 0
 }

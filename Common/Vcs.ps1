@@ -283,6 +283,130 @@ function Ensure-JjFetchRefspec {
 	Ensure-FetchRefspec $Name
 }
 
+# True if the local bookmark is in the conflicted state (e.g. it moved locally
+# while origin moved too, and a fetch recorded both targets).
+function Test-JjBookmarkConflicted {
+	param([Parameter(Mandatory)][string]$Name)
+	$ErrorActionPreference = "Continue"
+	$out = jj bookmark list -T 'if(!self.remote() && self.conflict(), name ++ "\n", "")' 2>$null
+	$ErrorActionPreference = "Stop"
+	return (@($out | ForEach-Object { $_.Trim() }) -contains $Name)
+}
+
+# Push a bookmark safely — never force-push over origin. jj git push overwrites
+# the remote bookmark (force-with-lease against the last-fetched position), so:
+#  - fetch the branch first;
+#  - if the fetch turns the bookmark conflicted (origin moved AND it moved
+#    locally), offer to rebase the local commits onto origin and resolve;
+#  - if origin is plainly ahead, offer to pull — and never push while behind.
+# Returns $true when the push succeeded.
+# Resolve a conflicted (diverged) bookmark: pick the local side out of the
+# conflict targets, offer to rebase it onto origin, and re-point the bookmark.
+# Change ids survive the rebase, so the bookmark is re-set by change id.
+# Returns $true when resolved.
+function Resolve-JjDivergedBookmark {
+	param([Parameter(Mandatory)][string]$Bookmark)
+
+	if (-not (Test-JjRevExists "$Bookmark@origin")) {
+		Write-Host "Bookmark '$Bookmark' is conflicted (no origin side). Resolve with 'jj bookmark set $Bookmark -r <rev>'." -ForegroundColor Red
+		return $false
+	}
+
+	$originCommit = (jj log --no-graph -r "$Bookmark@origin" -T 'commit_id ++ "\n"' 2>$null | Select-Object -First 1)
+	$ErrorActionPreference = "Continue"
+	$tmpl = 'if(!self.remote() && self.name() == "' + $Bookmark + '", self.added_targets().map(|t| t.change_id() ++ " " ++ t.commit_id()).join("\n") ++ "\n", "")'
+	$targets = @(jj bookmark list -T $tmpl 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+	$ErrorActionPreference = "Stop"
+	$localChange = $targets | Where-Object { ($_ -split ' ')[1] -ne $originCommit } |
+		ForEach-Object { ($_ -split ' ')[0] } | Select-Object -First 1
+	if (-not $localChange) {
+		Write-Host "Cannot identify the local side of '$Bookmark'. Resolve with 'jj bookmark set $Bookmark -r <rev>'." -ForegroundColor Red
+		return $false
+	}
+
+	Write-Host ""
+	Write-Host "[warn] origin/$Bookmark moved while '$Bookmark' also moved locally — the bookmark is diverged." -ForegroundColor Yellow
+	if (-not (Confirm-Action "Rebase your commits onto origin/$Bookmark and continue?")) {
+		Write-Host "Cancelled. Inspect with 'jj bookmark list', resolve with 'jj bookmark set'." -ForegroundColor Yellow
+		return $false
+	}
+
+	$ErrorActionPreference = "Continue"
+	jj rebase -b $localChange -d "$Bookmark@origin"
+	$rbExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($rbExit -ne 0) {
+		Write-Host "Rebase failed. Recover with 'jj op undo'." -ForegroundColor Red
+		return $false
+	}
+	if (Test-JjHasConflicts) {
+		Write-Host "Rebase produced conflicts. Resolve with 'jj resolve', then push again." -ForegroundColor Yellow
+		return $false
+	}
+	$ErrorActionPreference = "Continue"
+	jj bookmark set $Bookmark -r $localChange | Out-Host
+	$setExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($setExit -ne 0) {
+		Write-Host "Could not re-point the bookmark. Resolve with 'jj bookmark set'." -ForegroundColor Red
+		return $false
+	}
+	Write-Host "Bookmark '$Bookmark' resolved on top of origin." -ForegroundColor Green
+	return $true
+}
+
+function Invoke-JjPushBookmark {
+	param([Parameter(Mandatory)][string]$Bookmark)
+
+	$ErrorActionPreference = "Continue"
+	jj git fetch --branch $Bookmark 2>&1 | Out-Null
+	$ErrorActionPreference = "Stop"
+
+	# Diverged (now or from an earlier fetch): rebase onto origin or bail —
+	# jj refuses to push a conflicted bookmark anyway.
+	if (Test-JjBookmarkConflicted $Bookmark) {
+		if (-not (Resolve-JjDivergedBookmark $Bookmark)) {
+			Write-Host "Push cancelled." -ForegroundColor Yellow
+			return $false
+		}
+	}
+
+	$isNew = -not (Test-JjRevExists "$Bookmark@origin")
+	if (-not $isNew) {
+		$behind = Get-JjRevCount "$Bookmark..$Bookmark@origin"
+		if ($behind -gt 0) {
+			Write-Host ""
+			Write-Host "[warn] origin/$Bookmark is $behind commit(s) ahead; pushing now would overwrite and drop them." -ForegroundColor Yellow
+			if (-not (Confirm-Action "Pull (rebase onto origin/$Bookmark) first?")) {
+				Write-Host "Push cancelled." -ForegroundColor Yellow
+				return $false
+			}
+			& (Join-Path (Split-Path $PSScriptRoot -Parent) "pull.ps1")
+			if ($LASTEXITCODE -ne 0) {
+				Write-Host "Pull failed; push cancelled." -ForegroundColor Red
+				return $false
+			}
+			if ((Get-JjRevCount "$Bookmark..$Bookmark@origin") -gt 0) {
+				Write-Host "Still behind origin/$Bookmark; push cancelled." -ForegroundColor Yellow
+				return $false
+			}
+		}
+	}
+
+	Write-Host "Pushing bookmark '$Bookmark'..." -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	if ($isNew) { jj git push -b $Bookmark --allow-new } else { jj git push -b $Bookmark }
+	$pushExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($pushExit -ne 0) {
+		Write-Host "Push failed." -ForegroundColor Red
+		return $false
+	}
+	Write-Host "Pushed." -ForegroundColor Green
+	Ensure-JjFetchRefspec $Bookmark
+	return $true
+}
+
 # Offer to create a PR for a pushed bookmark (gh reads the exported git ref).
 # Skips main/master and no-ops when a PR already exists.
 function Invoke-JjPrCreate {

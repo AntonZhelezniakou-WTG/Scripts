@@ -276,17 +276,7 @@ function Invoke-JjCommit {
 	if ($pushKey.KeyChar -notmatch '^[Yy]$') { Write-Host "Push skipped." -ForegroundColor DarkGray; return }
 
 	Write-Host ""
-	Write-Host "Pushing bookmark '$bookmark'..." -ForegroundColor Cyan
-	$ErrorActionPreference = "Continue"
-	jj git push -b $bookmark
-	$pushExit = $LASTEXITCODE
-	$ErrorActionPreference = "Stop"
-	if ($pushExit -ne 0) {
-		Write-Host "Push failed." -ForegroundColor Red
-		return
-	}
-	Write-Host "Pushed." -ForegroundColor Green
-	Ensure-JjFetchRefspec $bookmark
+	if (-not (Invoke-JjPushBookmark $bookmark)) { return }
 
 	Invoke-JjPrCreate -Bookmark $bookmark
 }
