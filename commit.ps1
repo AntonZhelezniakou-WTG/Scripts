@@ -264,8 +264,9 @@ function Invoke-JjCommit {
 	Write-Host "Committed." -ForegroundColor Green
 
 	# ── Offer push ───────────────────────────────────────────────────────
+	# main/master included: some repos are worked directly on main (the PR
+	# offer below still skips main/master). Default is N, so no accidental push.
 	if (-not $bookmark) { return }
-	if ($bookmark -in @('main', 'master')) { return }
 
 	Write-Host ""
 	$Host.UI.RawUI.FlushInputBuffer()
