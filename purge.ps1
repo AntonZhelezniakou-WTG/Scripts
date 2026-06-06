@@ -10,12 +10,36 @@ if ($WorkDir) {
 	Set-Location $WorkDir
 }
 
+# The VS Code GitHub Pull Requests extension re-adds branch.<name>.github-pr-owner-number
+# (and vscode-merge-base) on every PR association instead of overwriting — a
+# long-standing extension bug that piles up duplicates. Collapse each key to its
+# latest value.
+function Remove-DuplicateVsCodePrKeys {
+	param([string]$ConfigFile)
+	$ErrorActionPreference = "Continue"
+	$keys = git config --file $ConfigFile --name-only --get-regexp '^branch\..*\.(github-pr-owner-number|vscode-merge-base)$' 2>$null | Sort-Object -Unique
+	$ErrorActionPreference = "Stop"
+	foreach ($key in @($keys | Where-Object { $_ })) {
+		$values = @(git config --file $ConfigFile --get-all $key)
+		if ($values.Count -gt 1) {
+			git config --file $ConfigFile --unset-all $key
+			git config --file $ConfigFile $key $values[-1]
+			Write-Host "  Deduped: $key ($($values.Count) -> 1)" -ForegroundColor DarkGray
+		}
+	}
+}
+
 # jj: the git remote-tracking-ref GC and fetch-refspec rebuild that purge performs
 # don't apply — in colocated repos `jj git fetch` follows the same .git/config
-# refspecs, and jj manages its own refs. Run jj's garbage collection instead.
+# refspecs, and jj manages its own refs. Run jj's garbage collection instead,
+# plus the .git/config dedupe when colocated.
 if ((Get-VcsBackend) -eq 'jj') {
 	$root = Get-JjRoot
 	if ($root) { Set-Location $root }
+	if ($root -and (Test-Path (Join-Path $root ".git"))) {
+		Write-Host "== Dedupe VS Code PR-extension keys in .git/config ==" -ForegroundColor DarkGray
+		Remove-DuplicateVsCodePrKeys ((git rev-parse --git-common-dir) + "/config")
+	}
 	Write-Host "== jj repo: running garbage collection (jj util gc) ==" -ForegroundColor DarkGray
 	$ErrorActionPreference = "Continue"
 	jj util gc 2>&1 | Out-Host
@@ -104,6 +128,9 @@ foreach ($branch in $localBranches) {
 	git config --file $configFile --add remote.origin.fetch "+refs/heads/${branch}:refs/remotes/origin/${branch}"
 	Write-Host "  Added refspec: $branch" -ForegroundColor DarkGray
 }
+
+Write-Host "== Dedupe VS Code PR-extension keys =="
+Remove-DuplicateVsCodePrKeys $configFile
 
 Write-Host "== Prune + GC =="
 $ErrorActionPreference = "Continue"
