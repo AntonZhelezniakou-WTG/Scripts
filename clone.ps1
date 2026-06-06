@@ -129,7 +129,7 @@ if ($Jj) {
 	Write-Host "Initializing colocated jj repo..." -ForegroundColor DarkGray
 	Push-Location $fullPath
 	$ErrorActionPreference = "Continue"
-	jj git init --colocate 2>&1 | Out-Host
+	jj git init --colocate | Out-Host
 	$jjExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	Pop-Location

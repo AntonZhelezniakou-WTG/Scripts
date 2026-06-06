@@ -29,7 +29,9 @@ function Start-JjChangeOffBase {
 	Write-Host ""
 	Write-Host "== Starting new change off '$dest' ==" -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
-	jj new $dest 2>&1 | Out-Host
+	# No 2>&1: jj prints status to stderr; merging it into the success stream
+	# makes PowerShell render it red as if it were an error.
+	jj new $dest | Out-Host
 	$newExit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"
 	if ($newExit -ne 0) {
@@ -73,7 +75,7 @@ function Invoke-JjCreate {
 		Write-Host "Bookmark '$Name' already exists." -ForegroundColor Yellow
 		if (Confirm-Action "Move to it (jj edit) instead?") {
 			$ErrorActionPreference = "Continue"
-			jj edit $Name 2>&1 | Out-Host
+			jj edit $Name | Out-Host
 			$ErrorActionPreference = "Stop"
 		}
 		Wait-AnyKey

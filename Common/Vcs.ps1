@@ -132,9 +132,9 @@ function Set-JjBookmark {
 	$existing = Get-JjBookmarks
 	$ErrorActionPreference = "Continue"
 	if ($existing -contains $Name) {
-		jj bookmark set $Name -r $Revision --allow-backwards 2>&1 | Out-Host
+		jj bookmark set $Name -r $Revision --allow-backwards | Out-Host
 	} else {
-		jj bookmark create $Name -r $Revision 2>&1 | Out-Host
+		jj bookmark create $Name -r $Revision | Out-Host
 	}
 	$exit = $LASTEXITCODE
 	$ErrorActionPreference = "Stop"

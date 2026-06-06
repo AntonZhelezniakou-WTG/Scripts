@@ -33,7 +33,7 @@ function Invoke-JjStash {
 			switch -regex ($k.KeyChar) {
 				'^[Rr]$' {
 					$ErrorActionPreference = "Continue"
-					jj edit $pick 2>&1 | Out-Host
+					jj edit $pick | Out-Host
 					$ErrorActionPreference = "Stop"
 					Write-Host "Restored '$pick' (working copy moved onto it)." -ForegroundColor Green
 					if (Confirm-Action "Remove the '$pick' bookmark now?") {

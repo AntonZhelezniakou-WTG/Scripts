@@ -42,7 +42,7 @@ if ((Get-VcsBackend) -eq 'jj') {
 	}
 	Write-Host "== jj repo: running garbage collection (jj util gc) ==" -ForegroundColor DarkGray
 	$ErrorActionPreference = "Continue"
-	jj util gc 2>&1 | Out-Host
+	jj util gc | Out-Host
 	$ErrorActionPreference = "Stop"
 	Write-Host "Done" -ForegroundColor Green
 	exit 0
