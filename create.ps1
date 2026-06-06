@@ -6,6 +6,61 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
+# Fetch and start a new working-copy change off the base bookmark, preferring
+# the freshly-fetched base@origin over the local one. Returns $true on success.
+function Start-JjChangeOffBase {
+	param([Parameter(Mandatory)][string]$Base)
+
+	Write-Host ""
+	Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
+	$ErrorActionPreference = "Continue"
+	jj git fetch | Out-Host
+	$ErrorActionPreference = "Stop"
+
+	# Prefer the freshly-fetched remote bookmark, fall back to the local one.
+	$dest = if (Test-JjRevExists "$Base@origin") { "$Base@origin" }
+	        elseif (Test-JjRevExists $Base)       { $Base }
+	        else { $null }
+	if (-not $dest) {
+		Write-Host "Error: '$Base' not found locally or on origin." -ForegroundColor Red
+		return $false
+	}
+
+	Write-Host ""
+	Write-Host "== Starting new change off '$dest' ==" -ForegroundColor Cyan
+	$ErrorActionPreference = "Continue"
+	jj new $dest 2>&1 | Out-Host
+	$newExit = $LASTEXITCODE
+	$ErrorActionPreference = "Stop"
+	if ($newExit -ne 0) {
+		Write-Host "Failed to start a new change off '$dest'." -ForegroundColor Red
+		return $false
+	}
+	return $true
+}
+
+# 'create new': no name yet — just start a fresh anonymous change off the base.
+# The bookmark comes later, via 'create <name>' or at commit time.
+function Invoke-JjNew {
+	$root = Get-JjRoot
+	if ($root) { Set-Location $root }
+
+	$base = Get-JjBaseBookmark
+	if (-not $base) {
+		Write-Host "Error: no base bookmark (main/master) found." -ForegroundColor Red
+		Wait-AnyKey
+		return
+	}
+
+	if (-not (Start-JjChangeOffBase $base)) {
+		Wait-AnyKey
+		return
+	}
+
+	Write-Host "Working copy is a fresh change off '$base'. Name it later with 'create <name>' or at commit time." -ForegroundColor Green
+	Wait-AnyKey
+}
+
 # jj: "create a branch" = put a bookmark on the current change (the local-branch
 # analogue). Workspaces (the worktree analogue) are a separate follow-up.
 function Invoke-JjCreate {
@@ -42,30 +97,7 @@ function Invoke-JjCreate {
 			return
 		}
 		if ($choice.Trim() -eq $options[1]) {
-			Write-Host ""
-			Write-Host "== Fetching from origin ==" -ForegroundColor DarkGray
-			$ErrorActionPreference = "Continue"
-			jj git fetch | Out-Host
-			$ErrorActionPreference = "Stop"
-
-			# Prefer the freshly-fetched remote bookmark, fall back to the local one.
-			$dest = if (Test-JjRevExists "$base@origin") { "$base@origin" }
-			        elseif (Test-JjRevExists $base)       { $base }
-			        else { $null }
-			if (-not $dest) {
-				Write-Host "Error: '$base' not found locally or on origin." -ForegroundColor Red
-				Wait-AnyKey
-				return
-			}
-
-			Write-Host ""
-			Write-Host "== Starting new change off '$dest' ==" -ForegroundColor Cyan
-			$ErrorActionPreference = "Continue"
-			jj new $dest 2>&1 | Out-Host
-			$newExit = $LASTEXITCODE
-			$ErrorActionPreference = "Stop"
-			if ($newExit -ne 0) {
-				Write-Host "Failed to start a new change off '$dest'." -ForegroundColor Red
+			if (-not (Start-JjChangeOffBase $base)) {
 				Wait-AnyKey
 				return
 			}
@@ -122,9 +154,22 @@ if (-not $script:VcsBackend) {
 }
 
 if (-not $BranchName) {
-	Write-Host "Usage: create <branch-name>" -ForegroundColor Red
+	Write-Host "Usage: create <branch-name> | create new" -ForegroundColor Red
+	Write-Host "  create new (jj): start a fresh unnamed change off main/master." -ForegroundColor DarkGray
 	Wait-AnyKey
 	exit 1
+}
+
+# --- 'create new': anonymous change off the base, name comes later (jj only) ---
+if ($BranchName -eq 'new') {
+	if ($script:VcsBackend -ne 'jj') {
+		Write-Host "'create new' needs a nameless working copy — only supported in jj repos." -ForegroundColor Red
+		Write-Host "In git: pick a name ('create <name>') or update main with 'pull main'." -ForegroundColor Yellow
+		Wait-AnyKey
+		exit 1
+	}
+	Invoke-JjNew
+	exit 0
 }
 
 # --- Offer AEM/ prefix ---
