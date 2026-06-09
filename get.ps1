@@ -116,6 +116,7 @@ function Get-Repository {
 
 # ── Setup ────────────────────────────────────────────────────────────────────
 
+$WorkDir, $Command = Resolve-WorkDirArg $WorkDir $Command
 if ($WorkDir) { Set-Location $WorkDir }
 
 git rev-parse --is-inside-work-tree 2>&1 | Out-Null

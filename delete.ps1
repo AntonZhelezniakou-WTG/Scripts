@@ -111,6 +111,7 @@ function Invoke-JjDelete {
 	}
 }
 
+$WorkDir, $Target = Resolve-WorkDirArg $WorkDir $Target
 if ($WorkDir) { Set-Location $WorkDir }
 
 # Validate repository

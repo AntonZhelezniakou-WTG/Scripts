@@ -65,6 +65,7 @@ function Invoke-PullCurrentIfBehind([string]$RepoPath, [string]$BranchName) {
 
 # ── Setup ────────────────────────────────────────────────────────────────────
 
+$WorkDir, $Target = Resolve-WorkDirArg $WorkDir $Target
 if ($WorkDir) { Set-Location $WorkDir }
 
 # ── jj backend ───────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Common\common.ps1")
 
+$WorkDir, $Action = Resolve-WorkDirArg $WorkDir $Action
 if ($WorkDir) { Set-Location $WorkDir }
 
 # jj has no stash. The idiom is to set the current change aside under a

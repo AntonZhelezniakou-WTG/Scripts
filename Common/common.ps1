@@ -7,6 +7,19 @@
 . (Join-Path $PSScriptRoot "FzfTree.ps1")
 . (Join-Path $PSScriptRoot "copy-wt-extras.ps1")
 
+# A .ps1 shadows its .cmd shim on PATH (ExternalScript outranks Application), so
+# `cmd <arg>` run by bare name executes the .ps1 directly and binds <arg> to
+# $WorkDir (the first param) instead of the intended one. When $WorkDir is not an
+# existing directory and the intended arg is empty, it's really that arg: hand it
+# back and clear WorkDir. Returns @(WorkDir, Arg).
+function Resolve-WorkDirArg {
+	param([string]$WorkDir, [string]$Arg)
+	if ($WorkDir -and -not $Arg -and -not (Test-Path -LiteralPath $WorkDir -PathType Container)) {
+		return @($null, $WorkDir)
+	}
+	return @($WorkDir, $Arg)
+}
+
 # Pause until any key is pressed.
 function Wait-AnyKey {
 	Write-Host "Press any key to continue..." -ForegroundColor Yellow

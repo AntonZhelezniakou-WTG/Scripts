@@ -254,8 +254,8 @@ function Open-SiblingRepo {
 
 # ── jj backend ───────────────────────────────────────────────────────────────
 
-# Switch onto a bookmark: jj new (work on top — the usual "checkout") or jj edit
-# (amend the bookmarked change). Resolves remote-only bookmarks via fetch.
+# Switch onto a bookmark: start a fresh change on top of it (the usual jj
+# "checkout"). Resolves a remote-only bookmark by cloning it locally first.
 function Switch-JjBookmark {
 	param([string]$Name)
 	$root = Get-JjRoot
@@ -273,12 +273,12 @@ function Switch-JjBookmark {
 		}
 	}
 
-	$opts   = @("New change on '$Name' (jj new)", "Edit '$Name' directly (jj edit)")
-	$choice = Invoke-Fzf -Entries $opts -ExtraArgs @("--pointer=>", "--color=pointer:green,fg+:green:bold,bg+:-1")
-	if (-not $choice) { return }
-
+	Write-Host ""
+	Write-Host "== Starting new change on '$Name' ==" -ForegroundColor Cyan
 	$ErrorActionPreference = "Continue"
-	if ($choice.Trim() -eq $opts[0]) { jj new $Name } else { jj edit $Name }
+	# No 2>&1: jj prints status to stderr; merging it into the success stream makes
+	# PowerShell render it red as if it were an error.
+	jj new $Name | Out-Host
 	$ErrorActionPreference = "Stop"
 }
 
@@ -404,6 +404,7 @@ function Invoke-JjBranches {
 	}
 }
 
+$WorkDir, $Branch = Resolve-WorkDirArg $WorkDir $Branch
 if ($WorkDir) { Set-Location $WorkDir }
 
 # Validate repository
