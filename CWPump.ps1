@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $sourceRoot = 'D:\GitHub\WiseTechGlobal\CargoWise'
 $folders = @('.claude', '.config', '.github', '.paket', '.venv', 'packages', 'paket-files')
 
-function Get-CWSyncGitValue {
+function Get-CWPumpGitValue {
 	param([string]$Directory, [string]$Option)
 
 	$ErrorActionPreference = "Continue"
@@ -23,7 +23,7 @@ function Get-CWSyncGitValue {
 	return $value.Trim()
 }
 
-function Get-CWSyncNormalizedPath {
+function Get-CWPumpNormalizedPath {
 	param([string]$Path)
 	return [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($Path))
 }
@@ -31,16 +31,16 @@ function Get-CWSyncNormalizedPath {
 try {
 	if ($WorkDir) { Set-Location -LiteralPath $WorkDir }
 	if ($env:GIT_DIR -or $env:GIT_WORK_TREE -or $env:GIT_COMMON_DIR) {
-		throw 'Unset GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR before running CWSync.'
+		throw 'Unset GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR before running CWPump.'
 	}
-	if ((Get-CWSyncGitValue (Get-Location).Path '--is-inside-work-tree') -ne 'true') {
+	if ((Get-CWPumpGitValue (Get-Location).Path '--is-inside-work-tree') -ne 'true') {
 		throw 'The current directory is not inside a Git worktree.'
 	}
-	$sourceCommon = Get-CWSyncNormalizedPath (Get-CWSyncGitValue $sourceRoot '--git-common-dir')
-	$targetCommon = Get-CWSyncNormalizedPath (Get-CWSyncGitValue (Get-Location).Path '--git-common-dir')
-	$targetGitDir = Get-CWSyncNormalizedPath (Get-CWSyncGitValue (Get-Location).Path '--absolute-git-dir')
+	$sourceCommon = Get-CWPumpNormalizedPath (Get-CWPumpGitValue $sourceRoot '--git-common-dir')
+	$targetCommon = Get-CWPumpNormalizedPath (Get-CWPumpGitValue (Get-Location).Path '--git-common-dir')
+	$targetGitDir = Get-CWPumpNormalizedPath (Get-CWPumpGitValue (Get-Location).Path '--absolute-git-dir')
 	if ($sourceCommon -ine $targetCommon -or $targetGitDir -ieq $sourceCommon) {
-		throw "Run CWSync inside a linked worktree of '$sourceRoot', not in the main checkout or another repository."
+		throw "Run CWPump inside a linked worktree of '$sourceRoot', not in the main checkout or another repository."
 	}
 	$ErrorActionPreference = "Continue"
 	$targetRoot = Get-RepoRoot
@@ -106,7 +106,7 @@ try {
 			throw "Robocopy failed or found a file/directory mismatch in '$folder' (exit code $copyExit). Some files may already have been copied."
 		}
 	}
-	$message = if ($ListOnly) { 'CWSync preview complete.' } else { 'CWSync complete: all 7 folders copied.' }
+	$message = if ($ListOnly) { 'CWPump preview complete.' } else { 'CWPump complete: all 7 folders copied.' }
 	Write-Host "`n$message" -ForegroundColor Green
 	exit 0
 } catch {
