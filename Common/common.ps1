@@ -6,6 +6,7 @@
 . (Join-Path $PSScriptRoot "Stash.ps1")
 . (Join-Path $PSScriptRoot "FzfTree.ps1")
 . (Join-Path $PSScriptRoot "copy-wt-extras.ps1")
+. (Join-Path $PSScriptRoot "SqlConnections.ps1")
 
 # A .ps1 shadows its .cmd shim on PATH (ExternalScript outranks Application), so
 # `cmd <arg>` run by bare name executes the .ps1 directly and binds <arg> to
