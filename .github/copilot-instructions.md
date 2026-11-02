@@ -4,7 +4,7 @@ Personal collection of PowerShell git/build workflow scripts for a Windows + Win
 
 ## Layout
 
-- Top-level `*.ps1` / `*.cmd` — user-facing commands (`repo`, `branches`, `commit`, `push`, `pull`, `pump`, `stash`, `build`, `clone`, `create`, `delete`, `drop`, `fetch`, `get`, `purge`, `changes`, `conflicts`, `sql-connection`).
+- Top-level `*.ps1` / `*.cmd` — user-facing commands (`repo`, `branches`, `commit`, `push`, `pull`, `pump`, `stash`, `build`, `clone`, `create`, `delete`, `drop`, `fetch`, `get`, `purge`, `changes`, `conflicts`, `sql-connection`, `sql-database`, `sql-browse`).
 - `Common/` — dot-sourced libraries. `common.ps1` is the single entry point; it sources `Git.ps1`, `Vcs.ps1`, `Stash.ps1`, `FzfTree.ps1`, `copy-wt-extras.ps1`, `SqlConnections.ps1`. `repo.completion.ps1` provides argument completion.
 - `Configuration/` — JSON config: `Paths.json` (base dirs, `ownerAliases`, `worktreeAliases`), `Build.json` (per-repo MSBuild targets + recent list), `RecentRepos.json`, `RepoCache.json` (cached `gh repo list` output).
 
@@ -30,8 +30,8 @@ Personal collection of PowerShell git/build workflow scripts for a Windows + Win
 - Invoke commands from any cwd via the `.cmd` shims (e.g. `repo cw`, `branches`, `commit`). Most scripts accept an optional `-WorkDir` to operate on a specific repo path.
 - `build.ps1` requires MSBuild at `C:\Program Files\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin\amd64\MSBuild.exe` and reads target lists from `Configuration/Build.json`. Pass `multiple` for multi-select, `--no-cache` to bypass the recent list.
 - No test suite, no linter, no CI. Manual verification is the workflow: run the affected `.cmd` against a real repo (or pass `-WorkDir` to a scratch clone).
-- `sql-connection` keeps DPAPI-encrypted SQL Server profiles in `%LOCALAPPDATA%\SqlConnections`. Test it only with `-StorePath` set to a scratch folder and dummy connection strings; never read or change the real store. Agent usage rules live in the `sql-connections` skill (`%USERPROFILE%\.agents\skills\sql-connections\SKILL.md`); update it when the command's behavior changes.
+- `sql-connection` keeps DPAPI-encrypted SQL Server profiles in `%LOCALAPPDATA%\SqlConnections`; `sql-database` keeps plain-text database aliases for them in its `Databases` subfolder. Test both only with `-StorePath` set to a scratch folder and dummy connection strings; never read or change the real store. `sql-database discover` and `-Verify` connect to SQL Server: test them only against LocalDB (`(localdb)\MSSQLLocalDB` with Integrated Security). `sql-browse` is the interactive fzf tree over both, for the user only: it needs a console, and its test and database list connect to SQL Server. Test it with a scratch `-StorePath`, with `fzf` and `Read-Host` replaced by scripted functions, and connect only to LocalDB. Agent usage rules live in the `sql-connections` skill (`%USERPROFILE%\.agents\skills\sql-connections\SKILL.md`); update it when either command's behavior changes.
 
 ## External dependencies
 
-`git`, `gh` (GitHub CLI), `fzf`, `pwsh` (PowerShell 7+; 7.1+ for `sql-connection`), Windows Terminal (optional, gated on `$env:WT_SESSION`), MSBuild/devenv (only for `build.ps1`).
+`git`, `gh` (GitHub CLI), `fzf`, `pwsh` (PowerShell 7+; 7.1+ for `sql-connection`, `sql-database`, and `sql-browse`), Windows Terminal (optional, gated on `$env:WT_SESSION`), MSBuild/devenv (only for `build.ps1`).
